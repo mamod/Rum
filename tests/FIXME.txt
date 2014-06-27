@@ -1,0 +1,5 @@
+- tcp_connect should be non blocking
+  I just  
+    
+    affected tests
+    t/Loop/tcp-close-while-connecting.t
