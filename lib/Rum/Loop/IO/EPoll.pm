@@ -29,10 +29,44 @@ require 'sys/syscall.ph';
 
 my ($SYS_epoll_create1,$SYS_epoll_create, $SYS_epoll_ctl, $SYS_epoll_wait);
 
-$SYS_epoll_create1 = eval { &SYS_epoll_create1 }  || 0;
-$SYS_epoll_create  = eval { &SYS_epoll_create }   || 0;
-$SYS_epoll_ctl     = eval { &SYS_epoll_ctl }      || 0;
-$SYS_epoll_wait    = eval { &SYS_epoll_wait }     || 0;
+
+#copied from Sys::Syscall
+my $loaded_syscall = 0;
+sub _load_syscall {
+    # props to Gaal for this!
+    return if $loaded_syscall++;
+    my $clean = sub {
+        delete @INC{qw<syscall.ph asm/unistd.ph bits/syscall.ph
+                        _h2ph_pre.ph sys/syscall.ph>};
+    };
+    $clean->(); # don't trust modules before us
+    my $rv = eval { require 'syscall.ph'; 1 } || eval { require 'sys/syscall.ph'; 1 };
+    $clean->(); # don't require modules after us trust us
+    return $rv;
+}
+
+my ($sysname, $nodename, $release, $version, $machine) = POSIX::uname();
+if ($^O eq "linux") {
+    if ($machine =~ m/^i[3456]86$/) {
+        $SYS_epoll_create1  = 329;
+        $SYS_epoll_create   = 254;
+        $SYS_epoll_ctl      = 255;
+        $SYS_epoll_wait     = 256;
+    } elsif ($machine eq "x86_64") {
+        $SYS_epoll_create1  = 291;
+        $SYS_epoll_create   = 213;
+        $SYS_epoll_ctl      = 233;
+        $SYS_epoll_wait     = 232;
+    } else {
+        _load_syscall();
+        $SYS_epoll_create1 = eval { &SYS_epoll_create1 }  || 0;
+        $SYS_epoll_create  = eval { &SYS_epoll_create }   || 0;
+        $SYS_epoll_ctl     = eval { &SYS_epoll_ctl }      || 0;
+        $SYS_epoll_wait    = eval { &SYS_epoll_wait }     || 0;
+    }
+} else {
+    die "not implemented";
+}
 
 sub epoll_create1 {
     my $flag = shift;
