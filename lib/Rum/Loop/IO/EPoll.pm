@@ -25,10 +25,7 @@ sub EPOLLHUP     { $EPOLLHUP     }
 sub EPOLLONESHOT { $EPOLLONESHOT }
 sub EPOLLET      { $EPOLLET      }
 
-require 'sys/syscall.ph';
-
 my ($SYS_epoll_create1,$SYS_epoll_create, $SYS_epoll_ctl, $SYS_epoll_wait);
-
 
 #copied from Sys::Syscall
 my $loaded_syscall = 0;
