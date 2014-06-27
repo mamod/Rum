@@ -203,7 +203,7 @@ sub __recvmsg {
         Rum::Loop::Core::cloexec ($new, 1);
         $new->autoflush(1);
         push @{$buff->{fds}}, $new;
-        $cmshdrsize -= length(pack("L!"));
+        $cmshdrsize -= 4;
     }
     
     $buff->{base} = substr $buffer, 0, $n;

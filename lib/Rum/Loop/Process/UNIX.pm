@@ -20,7 +20,7 @@ sub _getFD {
 
 sub __write_int {
     my $fh = shift;
-    my $val = shift . '';
+    my $val = shift;
     my $n = 0;
     do {
         $n = syswrite($fh, $val, length $val);
