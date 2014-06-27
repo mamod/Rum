@@ -44,7 +44,7 @@ sub exit_cb {
                     $term_signal) = @_;
     printf("exit_cb\n");
     $exit_cb_called++;
-    assert($exit_status == 12);
+    assert($exit_status == 12, "exit status 12 == " . $exit_status);
     assert($term_signal == 0);
     $loop->close($process, \&close_cb);
 }
@@ -88,12 +88,6 @@ sub init_process_options {
     $options->{args} = \@_;
     $options->{exit_cb} = $exit_cb;
     $options->{flags} = 0;
-}
-
-sub timer_cb {
-    my ($handle) = @_;
-    uv_process_kill(&process,  15); #SIGTERM
-    $loop->close($handle, \&close_cb);
 }
 
 
