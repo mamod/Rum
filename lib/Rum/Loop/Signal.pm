@@ -119,18 +119,14 @@ sub signal_event {
 
 
 sub signal_first_handle {
-    my $signum = shift;
-    
+    my $signum = shift;   
     #This function must be called with the signal lock held.
     my $lookup = {};
     
     $lookup->{signum} = $signum;
     $lookup->{loop} = undef;
     
-    #my $handle = RB_NFIND(uv__signal_tree_s, &uv__signal_tree, &lookup);
-    
     my $handle = $signal_tree->nfind($lookup);
-    
     if ($handle && $handle->{signum} == $signum){
         return $handle;
     }
@@ -138,24 +134,20 @@ sub signal_first_handle {
     return;
 }
 
-
 sub signal_close {
     my $loop = shift;
     my $handle = shift;
-    
     _signal_stop($loop,$handle);
-
+    
     # If there are any caught signals "trapped" in the signal pipe, we can't
     # call the close callback yet. Otherwise, add the handle to the finish_close
     # queue.
-    
     if ($handle->{caught_signals} == $handle->{dispatched_signals}) {
         $loop->make_close_pending($handle);
     }
 }
 
 sub _signal_stop {
-    
     my $loop = shift;
     my $handle = shift;
     
@@ -208,9 +200,7 @@ sub signal_global_init {
         die;
     }
     
-    if (!signal_unlock()){
-        die;
-    }
+    if (!signal_unlock()){ die }
 }
 
 sub signal_lock {
@@ -225,7 +215,6 @@ sub signal_lock {
 sub signal_unlock {
     my $r;
     my $data = 'a';
-
     do {
         $r = syswrite($signal_lock_pipefd->[1], $data, 1);
     } while (!defined $r && $! == EINTR);
@@ -235,9 +224,7 @@ sub signal_unlock {
 sub signal_handler {
     my $sig = shift;
     my $signum = $signo{$sig};
-    
     my $saved_errno = $!;
-    
     if (!signal_lock()) {
         $! = $saved_errno;
         return;

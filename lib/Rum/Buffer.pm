@@ -140,14 +140,6 @@ sub fill  {
     $value ||= 0;
     $start ||= 0;
     $end   ||= $self->length;
-
-    #if ( $utils->isString($value) ) {
-    #    $value = ord $value;
-    #}
-    #
-    #if ( !$utils->isNumber($value) ) {
-    #    Carp::croak('value is not a number');
-    #}
     
     if ( $utils->isNumber($value) ) {
         $value = chr $value;
@@ -589,7 +581,6 @@ package Rum::Buffer::Encode; {
         $utf8enc ||= find_encoding('utf8');
         ##change encoding in place
         $_[0] = $utf8enc->decode( $octets, $check );
-        #$_[0] = $octets if $check and !ref $check and !( $check & LEAVE_SRC() );
         undef $octets;
         return 1;
     }

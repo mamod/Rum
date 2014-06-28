@@ -34,21 +34,14 @@ sub new {
     return $this;
 }
 
-
 sub guessHandleType {
-    
     my $fh = shift;
-    
     return 'UNKNOWN' if !$fh; 
-    
     if ($util->isNumber($fh)) {
         my $fd = $fh;
         $fh = undef;
-        open($fh, ">&=", $fd) or die $!;
+        open($fh, "+<&=", $fd) or die $!;
     }
-    
-    #my $io = IO::Handle->new();
-    #my $fh = $io->fdopen($args->[0], 'w') or Pode::throe($!);
     
     my $type = '';
     if (-t $fh){
@@ -65,6 +58,5 @@ sub guessHandleType {
     
     return $type;
 }
-
 
 1;

@@ -110,6 +110,4 @@ sub open2 {
     $loop->tcp_open($wrap->{handle__}, $fh) or die $!;
 }
 
-
-
 1;

@@ -49,10 +49,10 @@ sub process {
     return Rum::process();
 }
 
-#=============================================================================================
-# the main function - creates lists on demand and the watchers associated
-# with them.
-#=============================================================================================
+#=========================================================================
+# the main function - creates lists on demand and the watchers
+# associated with them.
+#=========================================================================
 sub insert {
     my ($item, $msecs) = @_;
     $item->{_idleStart} = Rum::Timers::now();
@@ -144,7 +144,7 @@ sub enroll {
     #if this item was already in a list somewhere
     #then we should unenroll it from that
     unenroll($item) if $item->{_idleNext};
-
+    
     #Ensure that msecs fits into signed int32
     if ($msecs > 0x7fffffff) {
         $msecs = 0x7fffffff;
@@ -154,12 +154,12 @@ sub enroll {
     $L->init($item);
 }
 
-#=============================================================================================
+#=========================================================================
 # active
-#=============================================================================================
+#=========================================================================
 # call this whenever the item is active (not idle)
 # it will reset its timeout.
-#=============================================================================================
+#=========================================================================
 sub active  {
     my ($item) = @_;
     my $msecs = $item->{_idleTimeout};
@@ -174,9 +174,9 @@ sub active  {
     }
 }
 
-#=============================================================================================
+#=========================================================================
 # Timeout
-#=============================================================================================
+#=========================================================================
 sub setTimeout {
     my ($callback, $after, @args) = @_;
     $after += 0;
@@ -185,8 +185,6 @@ sub setTimeout {
     }
     
     my $timer = Rum::Timers::Timeout->new($after);
-    
-    #if (process.domain) timer.domain = process.domain;
     
     $timer->{_onTimeout} = sub {
         $callback->($timer,@args);
@@ -208,9 +206,9 @@ sub clearTimeout {
     }
 }
 
-#=============================================================================================
+#=========================================================================
 # Interval
-#=============================================================================================
+#=========================================================================
 sub setInterval {
     my ($callback, $repeat, @args) = @_;
     $repeat += 0; # coalesce to number or NaN
@@ -250,9 +248,9 @@ sub clearInterval {
     }
 }
 
-#=============================================================================================
+#=========================================================================
 # Immediate
-#=============================================================================================
+#=========================================================================
 sub setImmediate {
     my $callback = shift;
     my $immediate = Rum::Timers::Immediate->new();
@@ -277,21 +275,15 @@ sub setImmediate {
         process->{_immediateCallback} = \&processImmediate;
     }
     
-    #setImmediates are handled more like nextTicks.
-    #if ($asyncFlags[kHasListener] > 0) {
-    #    runAsyncQueue($immediate);
-    #}
-    
     if (process->{domain}) {
         $immediate->{domain} = process->{domain};
     }
     
     $L->append($immediateQueue, $immediate);
-    
     return $immediate;
 }
 
-
+#FIXME
 sub processImmediate {
     my $queue = $immediateQueue;
     my ($domain, $hasQueue, $immediate);
@@ -304,7 +296,6 @@ sub processImmediate {
         $hasQueue = !!$immediate->{_asyncQueue};
         $domain = $immediate->{domain};
         
-        die;
         if ($hasQueue) {
             loadAsyncQueue($immediate);
         }
@@ -417,7 +408,6 @@ sub _unrefActive {
         debug('unrefList initialized');
         $unrefList = {};
         $L->init($unrefList);
-        
         debug('unrefTimer initialized');
         $unrefTimer = Rum::Wrap::Timers->new();
         $unrefTimer->unref();
@@ -467,9 +457,10 @@ sub _unrefActive {
 }
 
 sub start_timers { Rum::Wrap::Timers::run_timers() }
-#=============================================================================================
+
+#=========================================================================
 # Timeout Package
-#=============================================================================================
+#=========================================================================
 package Rum::Timers::Timeout; {
     use strict;
     use warnings;
@@ -550,69 +541,3 @@ package Rum::Timers::Immediate; {
 }
 
 1;
-
-__END__
-
-=head1 NAME
-
-Rum::Timers - Javascript timeout methods
-
-=head1 SYNOPSIS
-
-    use Rum::Timers;
-    ##or just export what you need
-    use Rum::Timers qw(setTimeout clearTimeout);
-    
-    my $timout = setTimeout(sub{
-        say 'Hi';
-    },100);
-    
-    clearTimeout($timeout);
-    
-    Rum::Timers::start_timers();
-
-=head1 DESCRIPTION
-
-Rum::Timers implements Javascript's timeouts, it was designed to be used with Rum applications but can be used
-as a stand alone module too, it's a direct port from nodejs timers and has been tested with hundreds of timers running
-at the same time and gave a good results, in some cases - comparing - to nodejs it showed better memory usage and faster
-responses
-
-=head1 METHODS
-
-=head2 setTimeout
-
-    setTimeout( coderef,milliseconds, @args );
-
-Excute coderef once after milliseconds passed, timeout must be in milliseconds  1000 = 1 second,
-you can pass extra args to your code ref
-
-    setTimeout({
-        print "My Name is " $_[0] . " " . $_[1];
-    }, 1000, 'Joe', 'Due');
-
-=head2 setInterval
-
-    setTimeout( coderef,timeout, @args );
-
-Same as setTimeout but excutes coderef at milliseconds intervals until you call clearInterval
-
-    my $i = 0;
-    my $timer;$timer = setInterval(sub{
-        clearInterval($timer) if $i >= 100;
-        print $i++;
-    },100);
-
-=head2 clearTimeout
-
-    clearTimeout($timeout);
-
-=head2 clearInterval
-
-    clearInterval($timeout);
-
-=head2 start_timer
-
-Should be called at the end of your program execution process to start timers
-
-    start_timers();

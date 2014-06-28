@@ -21,8 +21,6 @@ sub Rum::Process::startup {
     #globalConsole();
     #===============================================
     
-    Rum::Loop::Core::disable_stdio_inheritance();
-    
     processAssert();
     # NOTHING TODO - processConfig();
     processStdio();
@@ -172,7 +170,7 @@ sub processChannel {
         delete process->{env}->{NODE_CHANNEL_FD};
         
         my $cp = Require('child_process');
-
+        
         #Load tcp_wrap to avoid situation where we might immediately receive
         #a message.
         #FIXME is this really necessary?
@@ -306,7 +304,7 @@ package Rum::Process; {
     sub nextTick {
         
         my ($s,$callback) = @_;
-        #return Rum::setTimeout($callback,0);
+        
         #on the way out, don't bother. it won't get fired anyway.
         return if process->{_exiting};
         

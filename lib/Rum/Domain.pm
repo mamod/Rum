@@ -11,7 +11,7 @@ Rum::module()->{exports} = 'Rum::Domain';
 my $_domain_flag = {};
 my $_domain = [0];
 my @stack = ();
-#exports._stack = stack;
+
 #the active domain is always the one that we're currently in.
 my $active = 0;
 

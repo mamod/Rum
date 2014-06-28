@@ -153,7 +153,6 @@ sub new {
     update_time($loop);
     
     $loop->platform_loop_init();
-    #return $err if ($err);
     
     $loop->{child_watcher} = {};
     $loop->signal_init($loop->{child_watcher});
@@ -169,18 +168,15 @@ sub platform_loop_init {
     my $loop = shift;
     #close $Rum::Loop::Pool::parent;
     #Rum::Loop::Pool::send_thread_signal('STOP');
-    
     if ($SELECT){
         $loop->{sEvents} = ['','',''];
         $loop->{children_watcher} = {};
         $loop->timer_init($loop->{children_watcher});
-        
     } elsif ($EPOLL){
         my $fd;
         $fd = Rum::Loop::IO::EPoll::epoll_create1(1);
         if ( $fd == -1 && ($! == ENOSYS  || $! == EINVAL)) {
             $fd = Rum::Loop::IO::EPoll::epoll_create(256);
-            
             if ( $fd > -1 ) {
                 Rum::Loop::Core::cloexec($fd, 1);
             }
@@ -200,31 +196,6 @@ sub platform_loop_init {
     
     ##we will watch pool child socket for all events
     #$loop->io_start($io, ($POLLIN|$POLLERR));
-    
-    #if ($EPOLL) {
-    #    #require Rum::Loop::IO::EPoll;
-    #    my $fd = Sys::Syscall::epoll_create(256);
-    #    if ($fd != -1) {
-    #        #Rum::Loop::Core::cloexec($fd, 1);
-    #    } else {
-    #        die $!;
-    #    }
-    #   
-    #    $loop->{backend_fd} = $fd;
-    #    $loop->{inotify_fd} = -1;
-    #    $loop->{inotify_watchers} = undef;
-    #}
-    # } elsif ( $KQUEUE ){
-    #    require Rum::Loop::IO::KQueue;
-    # } else {
-    #    if ($^O =~ /mswin/i) {
-    #        require Rum::Loop::IO::Win32;
-    #        Rum::Loop::Core::loop_init($loop);
-    #    } else {
-    #        require Rum::Loop::IO::Win32;
-    #        require Rum::Loop::IO::POSIX;
-    #    }
-    # }
     
     return 0;
 }
@@ -248,9 +219,6 @@ sub has_active_reqs {
 sub has_active_handles {
     return shift->{active_handles} > 0;
 }
-
-sub TICK_START {}
-sub TICK_STOP  {}
 
 sub now { shift->{time} }
 
@@ -324,8 +292,6 @@ sub run {
         }
         
         #debug "sleeping for $timeout\n";
-        #select undef,undef,undef, $timeout;
-        #select undef,undef,undef,0.001;
     }
     
     $r = $loop->loop_alive;
@@ -378,7 +344,6 @@ sub finish_close {
     $handle->{flags} |= $CLOSED;
     
     my $type = $handle->{type};
-    
     if ($type eq 'TIMER') {
         
     } elsif ($type eq 'IDLE') {
@@ -398,9 +363,7 @@ sub finish_close {
     }
     
     $loop->handle_unref($handle);
-    
     QUEUE_REMOVE($handle->{handle_queue});
-    
     if ($handle->{close_cb}) {
         $handle->{close_cb}->($handle);
     }
@@ -435,7 +398,6 @@ sub close {
     } else {
         die "shouldn't get here";
     }
-    
     $loop->make_close_pending($handle);
 }
 

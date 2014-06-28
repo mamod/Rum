@@ -50,8 +50,4 @@ sub now {
     return $loop->{time};
 }
 
-sub DESTROY {
-    
-}
-
 1;

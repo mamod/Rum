@@ -113,14 +113,12 @@ sub remove {
 
     while( $node->get_child($dir) ) {
         my $last = $dir;
-
         #update helpers
         $gp = $p;
         $p = $node;
         $node = $node->get_child($dir);
         
         my $cmp = $this->{_comparator}->($data, $node->{data});
-        
         $dir = $cmp > 0;
         
         #save found node
@@ -195,7 +193,7 @@ sub min {
     return $res->{data};
 }
 
-
+##FIXME
 sub next {
     return;
     my $this = shift;
@@ -220,8 +218,6 @@ sub next {
     return $elm->{data};
 }
 
-sub head { $_[0]->{_root} }
-
 sub nfind  {
     my $this = shift;
     my $elm = shift;
@@ -243,7 +239,7 @@ sub nfind  {
     return $res->{data};
 }
 
-#returns null if tree is empty
+#returns undef if tree is empty
 sub max {
     my $this = shift;
     my $res = $this->{_root};
@@ -276,6 +272,8 @@ sub double_rotate {
     return single_rotate($root, $dir);
 }
 
+sub head { $_[0]->{_root} }
+
 package Rum::RBTree::Node; {
     use Scalar::Util 'weaken';
     use Data::Dumper;
@@ -293,9 +291,6 @@ package Rum::RBTree::Node; {
         return $_[1] ? $_[0]->{right} : $_[0]->{left};
     }
     
-    sub get_right {  $_[0]->{right} }
-    sub get_left  {  $_[0]->{left}  }
-    
     sub set_child {
         my ($this, $dir, $val) = @_;
         if($dir) {
@@ -305,19 +300,9 @@ package Rum::RBTree::Node; {
         }
     }
     
-    
-    sub right {
-        $_[0]->{right};
-    }
-    
-    sub left {
-        $_[0]->{left};
-    }
-    
-    sub parent {
-        $_[0]->{left};
-    }
-    
+    sub right { $_[0]->{right} }
+    sub left { $_[0]->{left} }
+    sub parent { $_[0]->{left} }
 }
 
 1;

@@ -1,5 +1,4 @@
 package Rum::Wrap::Handle;
-
 use strict;
 use warnings;
 use Data::Dumper;
@@ -16,7 +15,6 @@ our @EXPORT = qw (
 
 sub HandleWrap {
     my $this = shift;
-    #my $handle = shift;
     $_[0]->{data} = $this;
     $this->{handle__} = $_[0];
 }
@@ -39,7 +37,7 @@ sub OnClose {
     my $handle = shift;
     my $wrap = $handle->{data};
     die "The wrap object should still be there" if !$wrap;
-    #die "the handle pointer should be gone" if $wrap->{handle__};
+    die "the handle pointer should be gone" if $wrap->{handle__};
     
     if ( $wrap->{flags} && ($wrap->{flags} & $kCloseCallback) ) {
         Rum::MakeCallback2($wrap, 'onclose');

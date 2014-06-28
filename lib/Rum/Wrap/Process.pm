@@ -17,7 +17,6 @@ sub new {
     return $this;
 }
 
-
 sub spawn {
     my $this = shift;
     my $js_options = shift;
@@ -75,13 +74,6 @@ sub spawn {
     
     #options.stdio
     ParseStdioOptions($js_options, $options);
-    
-    #options.windows_verbatim_arguments
-    #Local<String> windows_verbatim_arguments_key =
-    #    env->windows_verbatim_arguments_string();
-    #if (js_options->Get(windows_verbatim_arguments_key)->IsTrue()) {
-    #  options.flags |= UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS;
-    #}
 
     #options.detached
     my $detached = $js_options->{detached};
@@ -111,16 +103,15 @@ sub ParseStdioOptionsx {
 
 sub ParseStdioOptions {
     my ($js_options, $options) = @_;
-    
     my $stdios = $js_options->{stdio};
     my $len = scalar @{$stdios};
+    
     $options->{stdio} = Rum::Loop::Process::stdio_container($len);
     $options->{stdio_count} = $len;
     
     for (my $i = 0; $i < $len; $i++){
         my $stdio = $stdios->[$i];
         my $type = $stdio->{type};
-        
         if ($type eq 'ignore') {
             $options->{stdio}->[$i]->{flags} = $IGNORE;
         } elsif ($type eq 'pipe'){
@@ -128,9 +119,12 @@ sub ParseStdioOptions {
             my $handle = $stdio->{handle};
             $options->{stdio}->[$i]->{data}->{stream} = $handle->{handle__};
         } elsif ($type eq 'wrap'){
-            
+            my $handle = $stdio->{handle};
+            my $stream = HandleToStream($handle);
+            assert($stream);
+            $options->{stdio}->[$i]->{flags} = $INHERIT_STREAM;
+            $options->{stdio}->[$i]->{data}->{stream} = $stream;
         } else {
-            
             my $fd = $stdio->{fd};
             $options->{stdio}->[$i]->{flags} = $INHERIT_FD;
             $options->{stdio}->[$i]->{data}->{fd} = $fd;

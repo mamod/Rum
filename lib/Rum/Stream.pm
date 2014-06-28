@@ -89,7 +89,6 @@ sub pipe {
     $source->on('close', $cleanup);
     
     $dest->on('close', $cleanup);
-    
     $dest->emit('pipe', $source);
     
     #Allow for unix-like usage: A.pipe(B).pipe(C)

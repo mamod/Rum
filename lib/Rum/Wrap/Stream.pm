@@ -69,23 +69,14 @@ sub AcceptHandle {
     my ($wrap, $pipe, $pending) = @_;
     my $handle = $wrap->{handle__};
     $! = 0;
-    
     if (!$loop->accept($pipe,$handle)){
         die $!;
     }
-    
-    
-    
     return $wrap;
 }
 
 sub DoRead {
-    my ($wrap,
-        $handle,
-        $nread,
-        $buf,
-        $pending) = @_;
-    
+    my ($wrap,$handle,$nread,$buf,$pending) = @_;
     my @argv = (
         $nread,
         undef,
@@ -107,7 +98,6 @@ sub DoRead {
     }
     
     $argv[1] = $buf;
-    
     my $pending_object;
     if ($pending =~ /(TCP|NAMED_PIPE|UDP)/) {
         my $TCPwrap = Rum::Wrap::TCP->new();
@@ -143,7 +133,6 @@ sub UpdateWriteQueueSize {
     $this->{writeQueueSize} = $write_queue_size;
 }
 
-#=========================================
 sub writeUtf8String {
     return WriteStringImpl('UTF8',@_);
 }
@@ -192,7 +181,6 @@ sub WriteStringImpl {
     
     if ($try_write) {
         $buf = $loop->buf_init($string);
-        
         my $count = 1;
         $err = TryWrite($wrap, $buf, $count);
         
@@ -237,9 +225,6 @@ sub WriteStringImpl {
         if ($send_handle_obj) {
             my $wrap = $send_handle_obj;
             $send_handle = $wrap->{handle__};
-            
-            # Reference StreamWrap instance to prevent it from being garbage
-            # collected before `AfterWrite` is called.
             assert($req_wrap);
             $req_wrap->{handle} = $send_handle_obj;
         }
@@ -260,12 +245,11 @@ sub WriteStringImpl {
     if ($err) {
         undef $req_wrap;
     }
-  
+    
     done: {
         if ($err && $!){
             $req_wrap_obj->{error} = $!;
-        }
-        
+        }    
         $req_wrap_obj->{bytes} = $data_size;
         return $err;
     }
@@ -278,14 +262,7 @@ sub Dispatch {
 
 
 sub DoWrite {
-    my (
-        $wrap,
-        $w,
-        $bufs,
-        $count,
-        $send_handle,
-        $cb
-    ) = @_;
+    my ($wrap,$w,$bufs,$count,$send_handle,$cb) = @_;
     
     my $r = 0;
     if (!$send_handle) {
@@ -308,7 +285,7 @@ sub TryWrite {
     unless (defined $err){
         return $!;
     }
-
+    
     #Slice off the buffers: skip all written buffers and slice the one that
     #was partially written.
     $written = $err;
@@ -325,19 +302,15 @@ sub TryWrite {
     
     $_[1] = $bufs;
     $_[2] = $count;
-    
     return 0;
 }
 
 sub AfterWrite {
     my ($req, $status) = @_;
-    
     my $wrap = $req->{handle}->{data};
     my $req_wrap_obj = $req;
     
-    if (!$wrap){
-        return;
-    }
+    if (!$wrap){ return }
     
     #The wrap and request objects should still be there.
     assert($req_wrap_obj);
@@ -367,7 +340,10 @@ sub shutdown {
     my $wrap = shift;
     assert(CORE::ref $wrap);
     my $req_wrap_obj = shift;
-    $loop->shutdown($req_wrap_obj, $wrap->{handle__}, \&AfterShutdown) or return $!;
+    
+    $loop->shutdown($req_wrap_obj, $wrap->{handle__}, \&AfterShutdown)
+            or return $!;
+    
     return 0;
 }
 
@@ -375,7 +351,6 @@ sub AfterShutdown {
     my ($req, $status) = @_;
     my $req_wrap = $req;
     my $wrap = $req->{handle}->{data};
-    
     Rum::MakeCallback2($req_wrap,'oncomplete',$status,$wrap,$req_wrap);
     undef $req_wrap;
 }

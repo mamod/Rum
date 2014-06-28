@@ -120,57 +120,22 @@ sub MakeCallback {
     Rum::Process::_tickCallback();
 }
 
-sub MakeCallback2x {
-    my $obj = shift;
-    my $action = shift;
-    $obj->{$action}->(@_);
-    Rum::Process::_tickCallback();
-}
-
-my $in_tick = 0;
-sub MakeCallback2 {
-    
+sub MakeCallback2 {    
     my $handle = shift;
     my $string = shift;
+    
     my @args = @_;
     my $callback = $handle->{$string};
-    
-    #if (env->using_domains())
-    #  return MakeDomainCallback(env, recv, callback, argc, argv);
     my $process = process();
-    
-    #TryCatch try_catch;
-    #try_catch.SetVerbose(true);
-    
-    #// TODO(trevnorris): This is sucky for performance. Fix it.
-    #bool has_async_queue =
-    #    recv->IsObject() && recv.As<Object>()->Has(env->async_queue_string());
-    #if (has_async_queue) {
-    #  env->async_listener_load_function()->Call(process, 1, &recv);
-    #  if (try_catch.HasCaught())
-    #    return Undefined(env->isolate());
-    #}
     my $ret;
     
     try {
         $ret = $callback->(@args);
     } catch {
         die @_;
-        #print Dumper $string;
-        return;
     };
-    
-    #Local<Value> ret = callback->Call(recv, argc, argv);
-
-    #if (has_async_queue) {
-    #  env->async_listener_unload_function()->Call(process, 1, &recv);
-
-    #if (try_catch.HasCaught())
-    #  return Undefined(env->isolate());
-    #}
 
     my $tick_info = $process->tick_info();
-
     if ( $tick_info->{in_tick} ) {
         return $ret;
     }
@@ -184,16 +149,8 @@ sub MakeCallback2 {
     Rum::Process::_tickCallback();
     $tick_info->{in_tick} = 0;
     
-    #if (try_catch.HasCaught()) {
-    #  tick_info->set_last_threw(true);
-    #  return Undefined(env->isolate());
-    #}
-    
     return $ret;
 }
-
-
-
 
 sub ParseArgs {   
     @new_args = ($SELF->{execPath});
@@ -244,48 +201,18 @@ sub ParseArgs {
 }
 
 sub Init {
-    
     #Initialize prog_start_time to get relative uptime.
     $prog_start_time = time();
     
     #Make inherited handles noninheritable.
-    #uv_disable_stdio_inheritance();
+    Rum::Loop::Core::disable_stdio_inheritance();
     
-    #init async debug messages dispatching
-    #FIXME(bnoordhuis) Should be per-isolate or per-context, not global.
-    ## TO DO
+    ##TO DO
     #$loop->async_init($dispatch_debug_messages_async,\&DispatchDebugMessagesAsyncCallback);
     #Rum::Loop::unref($dispatch_debug_messages_async);
     
     #Parse arguments which are specific to Node.
     ParseArgs();
-    
-    #if (debug_wait_connect) {
-    #    const char expose_debug_as[] = "--expose_debug_as=v8debug";
-    #    V8::SetFlagsFromString(expose_debug_as, sizeof(expose_debug_as) - 1);
-    #}
-    
-    #const char typed_arrays_flag[] = "--harmony_typed_arrays";
-    #V8::SetFlagsFromString(typed_arrays_flag, sizeof(typed_arrays_flag) - 1);
-    #V8::SetArrayBufferAllocator(&ArrayBufferAllocator::the_singleton);
-    
-    ###TO DO
-    #using BSD::Resource is an option
-    
-    #ifdef __POSIX__
-    # Raise the open file descriptor limit.
-    #// Ignore SIGPIPE
-    #RegisterSignalHandler(SIGPIPE, SIG_IGN);
-    #RegisterSignalHandler(SIGINT, SignalExit);
-    #RegisterSignalHandler(SIGTERM, SignalExit);
-    #endif  // __POSIX__
-    
-    #// If the --debug flag was specified then initialize the debug thread.
-    #if (use_debug_agent) {
-    #    EnableDebug(debug_wait_connect);
-    #} else {
-    #    RegisterDebugSignalHandler();
-    #}
 }
 
 sub SetupProcessObject {
@@ -431,61 +358,6 @@ package Rum::Process; {
     sub umask { shift; CORE::umask(shift) }
     sub domain { undef }
     
-    #my $tickInfo = {
-    #    kInTick => 0,
-    #    kIndex => 0,
-    #    kLastThrew => 0,
-    #    kLength => 0
-    #};
-    #
-    #sub nextTick {
-    #    my ($self,$callback) = @_;
-    #    #on the way out, don't bother. it won't get fired anyway.
-    #    return if $self->{_exiting};
-    #    
-    #    push @nextTickQueue, {
-    #        callback => $callback,
-    #        domain => $self->domain || undef
-    #    };
-    #    
-    #    $tickInfo->{kLength}++;
-    #}
-    #
-    #sub tickDone {
-    #    if ($tickInfo->{kLength} != 0) {
-    #        if ($tickInfo->{kLength} <= $tickInfo->{kIndex}) {
-    #            @nextTickQueue = ();
-    #            $tickInfo->{kLength} = 0;
-    #        } else {
-    #            splice @nextTickQueue, 0, $tickInfo->{kIndex};
-    #            $tickInfo->{kLength} = @nextTickQueue;
-    #        }
-    #    }
-    #    $tickInfo->{kInTick} = 0;
-    #    $tickInfo->{kIndex} = 0;
-    #}
-    #
-    #sub _tickCallback {
-    #    my $callback;
-    #    my $threw;
-    #    
-    #    $tickInfo->{kInTick} = 1;
-    #    while ( $tickInfo->{kIndex} < $tickInfo->{kLength}) {
-    #        my $callback = $nextTickQueue[$tickInfo->{kIndex}++]->{callback};
-    #        $threw = 1;
-    #        Rum::try {
-    #            $callback->();
-    #            $threw = 0;
-    #        } Rum::finally {
-    #            tickDone() if $threw;
-    #        } Rum::catch {
-    #            Rum::process->emit('uncaughtException',$_);
-    #        };
-    #    }
-    #    
-    #    tickDone();
-    #}
-    
     sub _setupNextTick {
         my $self = shift;
         my $tick_info_obj = shift;
@@ -520,8 +392,6 @@ package Rum::Process; {
         my $this = shift;
         $this->{_send}->($this, @_);
     }
-    
-    #sub stdin    {{}}
 }
 
 1;

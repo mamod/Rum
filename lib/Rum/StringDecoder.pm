@@ -54,7 +54,6 @@ sub write {
         $buffer = $Buffer->new($buffer);
     }
     
-    
     $this->passThroughWrite($buffer) if $this->{passwrite};
     
     #if our last write ended with an incomplete multibyte character
@@ -95,9 +94,9 @@ sub write {
         $buffer = $buffer->slice($i, $buffer->length);
         last;
     }
-
+    
     my $lenIncomplete = $this->{detectIncompleteChar}->($this,$buffer);
-
+    
     my $end = $buffer->length;
     if ($this->{charLength}) {
         #buffer the incomplete character bytes we got
@@ -105,9 +104,9 @@ sub write {
         $this->{charReceived} = $lenIncomplete;
         $end -= $lenIncomplete;
     }
-
+    
     $charStr .= $buffer->toString($this->{encoding}, 0, $end);
-
+    
     $end = length($charStr) - 1;
     #my $charCode = charStr.charCodeAt(end);
     my $charCode = ord (substr $charStr, $end, 1);
@@ -121,7 +120,7 @@ sub write {
         $this->{charBuffer}->write($charat, $this->{encoding} );
         return substr $charStr,0, $end;
     }
-
+    
     #or just emit the charStr
     return $charStr;
 }
@@ -130,14 +129,13 @@ sub detectIncompleteChar {
     my ($this,$buffer) = @_;
     #determine how many bytes we have to check at the end of this buffer
     my $i = ($buffer->length >= 3) ? 3 : $buffer->length;
-
+    
     #Figure out if one of the last i bytes of our buffer announces an
     #incomplete char.
     for (; $i > 0; $i--) {
         my $c = $buffer->get($buffer->length - $i);
         
         #See http://en.wikipedia.org/wiki/UTF-8#Description
-        
         #110XXXXX
         if ($i == 1 && $c >> 5 == 0x06) {
             $this->{charLength} = 2;
@@ -179,6 +177,5 @@ sub end  {
     }
     return $res;
 }
-
 
 1;

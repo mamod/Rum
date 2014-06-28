@@ -5,6 +5,10 @@ use B  ();
 use Scalar::Util 'looks_like_number';
 use List::Util ();
 
+my $ERRNO_MAP = {
+    2 => 'ENOENT'
+};
+
 sub new {bless {},__PACKAGE__}
 sub isNumber {
     my $self = shift;
@@ -112,7 +116,6 @@ sub _extend {
     return $origin;
 }
 
-
 sub concat {
     shift;
     my @new = ();
@@ -132,23 +135,16 @@ sub isArray {
     ref $_[1] eq 'ARRAY';
 }
 
-
-my $ERRNO_MAP = {
-    2 => 'ENOENT'
-};
-
 sub _errnoException {
     my ($err, $syscall, $original) = @_;
-    
     if ($err < 0) {
         $err *= -1;
     }
     
-    
     $syscall ||= '';
     $original ||=  '';
     
-    my $prev = $!;
+    my $saved_errno = $!;
     $! = $err + 0; #cast to number
     
     my $errname = $!;
@@ -161,7 +157,7 @@ sub _errnoException {
     $e->{code} = $ERRNO_MAP->{$errname+0};
     $e->{errno} = $err + 0;
     $e->{syscall} = $syscall;
-    $! = $prev;
+    $! = $saved_errno;
     return $e;
 }
 
@@ -202,7 +198,6 @@ sub reduce {
     return $value;
 }
 
-
 sub filter {
     shift;
     my $this = shift;
@@ -223,20 +218,13 @@ sub filter {
     for (my $i = 0; $i < $len; $i++) {
         if ($t->[$i]) {
             my $val = $t->[$i];
-            
-            #// NOTE: Technically this should Object.defineProperty at
-            #//       the next index, as push can be affected by
-            #//       properties on Object.prototype and Array.prototype.
-            #//       But that method's new, and collisions should be
-            #//       rare, so use the more-compatible alternative.
             if ($fun->($val, $i, $t)){
                 push @{$res}, $val;
             }
         }
     }
-
+    
     return $res;
 }
-
 
 1;
