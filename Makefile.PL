@@ -8,5 +8,5 @@ WriteMakefile(
     ABSTRACT_FROM     => 'lib/Rum.pm', #retrieve abstract from module
     AUTHOR            => 'Mamod A. Mehyar <mamod.mehyar@gmail.com>',
     LICENSE           => 'perl',
-    test              => {TESTS => join( ' ', (glob( 't/*.t'), glob('t/*/*.t')))},
+    test              => {TESTS => join( ' ', (glob( 't/*.t'), glob('t/*/*.t'), , glob('t/*/*/*.t')))},
 );
