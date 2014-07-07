@@ -123,10 +123,10 @@ sub process_child_init {
     }
     
     $! = 0;
-    if ($options->{file} =~ /Rum\.sh/i){
-        $options->{file} = "perl";
-        unshift @{$options->{args}}, "runner.pl";
-    }
+    #if ($options->{file} =~ /Rum\.sh/i){
+    #    $options->{file} = "perl";
+    #    unshift @{$options->{args}}, "runner.pl";
+    #}
     
     my $e = exec( $options->{file}, @{$options->{args}} );
     __write_int($error_fd, $!+0);
