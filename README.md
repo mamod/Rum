@@ -12,6 +12,8 @@ Project Notes
 
 * Porting Node core modules
 
+* Only stable and frozen node modules, experimental and unstable modules will be ported once they marked as stable
+
 * Using perl core modules only
 
 TODO NEXT

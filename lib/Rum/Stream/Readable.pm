@@ -67,7 +67,7 @@ sub readableAddChunk {
                 if ($addToFront) {
                     unshift @{ $state->{buffer} },$chunk;
                 } else {
-                    push @{ $state->{buffer} },$chunk;
+                    CORE::push @{ $state->{buffer} },$chunk;
                 }
                 
                 emitReadable($stream) if $state->{needReadable};
@@ -253,7 +253,11 @@ sub needMoreData {
 sub push {
     my ($this, $chunk, $encoding) = @_;
     my $state = $this->{_readableState};
-
+    
+    ##- FIXME: do we really need to pass Rum::Buffer
+    ##- or even do we really need Rum::Buffer at all
+    ##- it's the source of all slowness
+    ##- we can just pass a raw string
     if ( $util->isString($chunk) && !$state->{objectMode} ) {
         $encoding = $encoding || $state->{defaultEncoding};
         if ( !$state->{encoding} || $encoding ne $state->{encoding} ) {
@@ -265,7 +269,7 @@ sub push {
     return readableAddChunk($this, $state, $chunk, $encoding, 0);
 }
 
-# Unshift should *always* be something directly out of read()
+#Unshift should *always* be something directly out of read()
 sub unshift {
     my ($this,$chunk) = @_;
     my $state = $this->{_readableState};
@@ -336,7 +340,6 @@ sub flow {
         my $chunk;
         do {
             $chunk = $stream->read();
-            
         } while ( defined $chunk && $state->{flowing} );
     }
 }
@@ -345,7 +348,6 @@ sub flow {
 #Ensure readable listeners eventually get something
 sub on {
     my ($this, $ev, $fn) = @_;
-    #my $res = $this->SUPER::on($ev, $fn);
     my $res = Rum::Stream::on($this, $ev, $fn);
     #If listening to data, and it has not explicitly been paused,
     #then call resume to start the flow of data on the next tick.
@@ -588,7 +590,7 @@ sub pipe {
     my $ondrain = pipeOnDrain($src);
     
     $dest->on('drain', $ondrain);
-
+    
     $cleanup = sub {
         debug('cleanup');
         #cleanup event handlers once the pipe is broken
@@ -632,6 +634,7 @@ sub pipe {
     $ondata = sub {
         my ($this,$chunk) = @_;
         debug('ondata');
+        
         my $ret = $dest->write($chunk);
         if (!$ret) {
             debug('false write response, pause',

@@ -1,7 +1,7 @@
 package Rum::Loop::Fs;
 use strict;
 use warnings;
-use Rum::Loop::Queue;
+
 use Fcntl qw(O_RDONLY O_WRONLY O_RDWR);
 use Data::Dumper;
 use base qw/Exporter/;
@@ -25,7 +25,8 @@ sub INIt {
 sub POST {
     my ($loop,$req,$cb) = @_;
     if ($cb) {
-        $loop->work_submit($req, 'Rum::Loop::Fs::fs_work', 'Rum::Loop::Fs::fs_done');
+        $loop->work_submit($req, 'Rum::Loop::Fs::fs_work',
+                            'Rum::Loop::Fs::fs_done');
         return 0;
     } else {
         fs_work($req);
@@ -102,7 +103,7 @@ my $action = {
         my $req = shift;
         my $fh = $req->{fh} || do {
             my $fd = $req->{file};
-            open my $FH, "<&=$fd" or die $!;
+            open my $FH, "+<&=$fd" or die $!;
             $FH;
         };
         
@@ -126,7 +127,6 @@ my $action = {
 sub fs_work {
     my $req = shift;
     my $type = $req->{fs_type};
-    #print $type . "\n";
     die "$type is not a defined action" if !$action->{$type};
     my $r = $action->{$type}->($req);
     if (!$r) {

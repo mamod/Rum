@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use lib '../../';
 use Rum::Utils;
+use Rum 'Require';
 use base 'Rum::Events';
 use Data::Dumper;
 use Rum::Wrap::TCP;
@@ -30,7 +31,7 @@ sub debug {
 
 sub new {
     my $class = shift;
-    my $this = bless {}, $class;
+    my $this = ref $class ? $class : bless {}, $class;
     my $self = $this;
     
     my $options;
@@ -288,35 +289,18 @@ sub createServerHandle {
     
     #assign handle in listen, and clean up if bind or listen fails
     my $handle;
+    my $isTCP = 0;
+    
     if ($util->isNumber($fd) && $fd >= 0) {
-        
-        die;
-        #     try {
-        #         handle = createHandle(fd);
-        #     } catch (e) {
-        #         // Not a fd we can listen on. This will trigger an error.
-        #         debug('listen invalid fd=' + fd + ': ' + e.message);
-        #         return uv.UV_EINVAL;
-        #     }
-        
-        #     handle.open(fd);
-        #     handle.readable = true;
-        #     handle.writable = true;
-        #     return handle;
-        #
+        die "not implemented";
     } elsif (($port && $port == -1) && ($addressType && $addressType == -1)) {
         $handle = createPipe();
-        #if (process.platform === 'win32') {
-        #    var instances = parseInt(process.env.NODE_PENDING_PIPE_INSTANCES);
-        #    if (!isNaN(instances)) {
-        #       handle.setPendingInstances(instances);
-        #    }
-        #}
     } else {
         $handle = createTCP();
+        $isTCP = 1;
     }
     
-    if ($address || $port) {
+    if ($address || $port || $isTCP) {
         debug('bind to ' . $address);
         if ($addressType == 6) {
             $err = $handle->bind6($address, $port);
@@ -324,10 +308,21 @@ sub createServerHandle {
             $err = $handle->bind($address, $port);
         }
     }
-  
+    
     if ($err) {
         $handle->close();
         return $err;
+    }
+    
+    if ($^O =~ /win32/i) {
+        #On Windows, we always listen to the socket before sending it to
+        #the worker (see uv_tcp_duplicate_socket). So we better do it here
+        #so that we can handle any bind-time or listen-time errors early.
+        $err = __listen($handle);
+        if ($err) {
+            $handle->close();
+            return $err;
+        }
     }
     
     return $handle;
@@ -340,7 +335,6 @@ sub createTCP {
 sub createPipe {
     return $TCP_WRAP->new();
 }
-
 
 sub _setupSlave {
     my ($this, $socketList) = @_;

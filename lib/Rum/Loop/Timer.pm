@@ -23,7 +23,6 @@ sub timer_init {
     $handle->{wrap} = $handle;
     $handle->{timer_cb} = undef;
     $handle->{repeat} = 0;
-    #bless $handle, __PACKAGE__;
     return $ret;
 }
 
@@ -79,7 +78,8 @@ sub timer_again {
     
     if ($handle->{repeat}) {
         $loop->timer_stop($handle);
-        $loop->timer_start($handle, $handle->{timer_cb}, $handle->{repeat}, $handle->{repeat});
+        $loop->timer_start($handle, $handle->{timer_cb},
+                           $handle->{repeat}, $handle->{repeat});
     }
     
     return 0;
@@ -88,13 +88,13 @@ sub timer_again {
 sub next_timeout {
     my $loop = shift;
     
-    #/* RB_MIN expects a non-const tree root. That's okay, it doesn't modify it. */
+    #RB_MIN expects a non-const tree root. That's okay, it doesn't modify it.
     my $handle = $loop->{timer_handles}->min();
-
+    
     if (!$handle){
         return -1; #block indifinetly
     }
-
+    
     if ($handle->{timeout} <= $loop->{time} ){
         return 0;
     }
@@ -104,7 +104,7 @@ sub next_timeout {
         $diff = $INT_MAX;
     }
     
-    return $diff/1000;
+    return $diff;
 }
 
 sub timer_get_repeat {

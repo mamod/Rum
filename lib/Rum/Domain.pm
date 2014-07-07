@@ -4,12 +4,13 @@ use warnings;
 use Data::Dumper;
 use base 'Rum::EventEmitter';
 use Rum;
+
 $Rum::EventEmitter::usingDomain = 1;
 
 Rum::module()->{exports} = 'Rum::Domain'; 
 
 my $_domain_flag = {};
-my $_domain = [0];
+my $_domain = [undef];
 my @stack = ();
 
 #the active domain is always the one that we're currently in.
@@ -24,7 +25,7 @@ sub Rum::Process::domain {
 }
 
 sub create {
-    return new();
+    return Rum::Domain::new();
 }
 
 sub new {
@@ -37,15 +38,15 @@ sub add {
     my ($this,$ee) = @_;
     #disposed domains can't be used for new things.
     return if ( $this->{_disposed} );
-
+    
     #already added to this domain.
     return if ($ee->{domain} && $ee->{domain} == $this);
-
+    
     #has a domain already - remove it first.
     if ( $ee->{domain} ) {
         $ee->{domain}->remove($ee);
     }
-
+    
     #// check for circular Domain->Domain links.
     #// This causes bad insanity!
     #//
@@ -66,11 +67,10 @@ sub add {
     push @{$this->{members}}, $ee;
 }
 
-
 sub enter {
     my $this = shift;
     return if ($this->{_disposed});
-
+    
     #note that this might be a no-op, but we still need
     #to push it onto the stack so that we can pop it later.
     $active = process->domain($this);

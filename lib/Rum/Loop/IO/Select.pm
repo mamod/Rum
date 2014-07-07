@@ -124,15 +124,16 @@ sub Rum::Loop::IO::io_poll {
     my $rout = '';
     my $wout = '';
     my $eout = '';
+    my $wait;
     
     for (;;) {
-        
-        my $wait = $timeout == -1 ? undef : $timeout;
+        $wait = $timeout == -1 ? undef : $timeout/1000;
         
         $nfds = select($rout=$loop->{sEvents}->[0],
                     $wout=$loop->{sEvents}->[1],
                     $eout=$loop->{sEvents}->[2],$wait);
         
+        #print Dumper $nfds;
         # Update loop->time unconditionally. It's tempting to skip the update when
         # timeout == 0 (i.e. non-blocking poll) but there is no guarantee that the
         # operating system didn't reschedule our process while in the syscall.

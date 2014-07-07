@@ -3,15 +3,11 @@ use lib '../';
 use strict;
 use warnings;
 use POSIX qw(:errno_h);
-my $instance = 0;
-sub instance {$instance}
-our $THREADS = 3;
+our $THREADS = 2;
 
-##to avoid copying everything to threads
-##and decrease memory used
-##create threads at the beginning
-use Rum::Loop::Fs;
+use Rum::Loop::Thread;
 use Rum::Loop::Pool;
+use Rum::Loop::Fs;
 
 use Time::HiRes qw(time usleep);
 
@@ -37,7 +33,6 @@ use Fcntl;
 use Data::Dumper;
 use Carp;
 
-
 use base qw/Exporter/;
 our %EXPORT_TAGS = (
     CONSTANTS => [qw(
@@ -59,6 +54,8 @@ our @EXPORT = qw (
     RUN_NOWAIT
     default_loop
 );
+
+my $single_tone = 0;
 
 ##Globals================================================================
 sub RUN_DEFAULT { $RUN_DEFAULT }
@@ -86,10 +83,9 @@ sub buf_init {
 #========================================================================
 # Request Handle
 #========================================================================
-my $req_id = 0; ##special id for each request handle
 sub req_register {
     my ($loop,$req) = @_;
-    $req->{id} = ++$req_id;
+    $req->{id} = "$req";
     $loop->{active_reqs}++;
     #$req->{active_queue} = QUEUE_INIT($req);
     #$loop->{active_reqs}->insert_tail($req->{active_queue});
@@ -123,8 +119,8 @@ sub timer_cmp {
 sub new {
     my $class = shift;
     my $loop = bless {},$class;
-    
-    $instance++;
+    $single_tone++;
+    Rum::Loop::Pool::init($loop,$THREADS);
     
     $loop->{timer_handles}   = Rum::RBTree->new(\&timer_cmp);
     $loop->{nfds}            = 0;
@@ -147,6 +143,7 @@ sub new {
     $loop->{emfile_fd}       = -1;
     $loop->{timer_counter}   = 0;
     $loop->{stop_flag}       = 0;
+    $loop->{active_threads} = 0;
     $loop->{signal_pipefd} = [-1,-1];
     $loop->{process_handles} = {};
     
@@ -166,8 +163,6 @@ sub new {
 
 sub platform_loop_init {
     my $loop = shift;
-    #close $Rum::Loop::Pool::parent;
-    #Rum::Loop::Pool::send_thread_signal('STOP');
     if ($SELECT){
         $loop->{sEvents} = ['','',''];
         $loop->{children_watcher} = {};
@@ -185,19 +180,8 @@ sub platform_loop_init {
         $loop->{backend_fd} = $fd;
     }
     
-    #my $childWatcher = $Rum::Loop::Pool::child;
-    #my $io = $loop->io_init($childWatcher, sub {
-    #    my ($loop,$h,$event) = @_;
-    #    return if !($event & ($POLLIN|$POLLERR));
-    #    sysread $childWatcher, my $buf,1;
-    #    print Dumper $buf;
-    #    Rum::Loop::Pool::Consume();
-    #});
     
-    ##we will watch pool child socket for all events
-    #$loop->io_start($io, ($POLLIN|$POLLERR));
-    
-    return 0;
+    return 1;
 }
 
 *ref          = \&handle_ref;
@@ -213,7 +197,7 @@ sub loop_alive {
 }
 
 sub has_active_reqs {
-    return shift->{active_reqs};
+    return shift->{active_reqs} > 0;
 }
 
 sub has_active_handles {
@@ -244,6 +228,13 @@ sub backend_timeout {
         return 0;
     }
     
+    ##if there is only active threads, we return a small
+    ##wait value, thread work may take some time to
+    ##complete and this to avoid cpu hog in the meanwhile
+    if ($loop->{active_threads} > 0) {
+        return 10;
+    }
+    
     return Rum::Loop::Timer::next_timeout($loop);
 }
 
@@ -252,57 +243,70 @@ sub run {
     $mode ||= $RUN_DEFAULT;
     my $timeout;
     my $r = loop_alive($loop);
-    
-    while (loop_alive($loop) && $loop->{stop_flag} == 0) {
-        
-        $loop->update_time;
-        $loop->run_timers;
-        $loop->run_idle;
-        $loop->run_prepare;
-        $loop->run_pending;
-        
-        $timeout = 0;
-        
-        if (($mode & $RUN_NOWAIT) == 0) {
-            $timeout = $loop->backend_timeout;
-        }
-        
-        $loop->io_poll($timeout);
-        $loop->run_check;
-        $loop->run_closing_handles;
-        
-        ##even though we already watching this with an io event
-        ##we need to make sure we consumed completed workers
-        Rum::Loop::Pool::Consume();
-        
-        if ( $mode == $RUN_ONCE ) {
-            # UV_RUN_ONCE implies forward progess: at least one callback must have
-            # been invoked when it returns. uv__io_poll() can return without doing
-            # I/O (meaning: no callbacks) when its timeout expires - which means we
-            # have pending timers that satisfy the forward progress constraint.
-            # UV_RUN_NOWAIT makes no guarantees about progress so it's omitted from
-            # the check.
+    loop_again : {
+        while (loop_alive($loop) && $loop->{stop_flag} == 0) {
             
             $loop->update_time;
             $loop->run_timers;
+            $loop->run_idle;
+            $loop->run_prepare;
+            $loop->run_pending;
+            
+            $loop->check_threads;
+            
+            $timeout = 0;
+            if (($mode & $RUN_NOWAIT) == 0) {
+                $timeout = $loop->backend_timeout;
+            }
+            
+            $loop->io_poll($timeout);
+            $loop->run_check;
+            $loop->run_closing_handles;
+            
+            if ( $mode == $RUN_ONCE ) {
+                # UV_RUN_ONCE implies forward progess: at least one callback must have
+                # been invoked when it returns. uv__io_poll() can return without doing
+                # I/O (meaning: no callbacks) when its timeout expires - which means we
+                # have pending timers that satisfy the forward progress constraint.
+                # UV_RUN_NOWAIT makes no guarantees about progress so it's omitted from
+                # the check.
+                
+                $loop->update_time;
+                $loop->run_timers;
+            }
+            
+            if ($mode & ($RUN_ONCE | $RUN_NOWAIT)) {
+                last;
+            }
+            
+            #debug "sleeping for $timeout\n";
         }
-        
-        if ($mode & ($RUN_ONCE | $RUN_NOWAIT)) {
-            last;
+    };
+    
+    ##OPTIMIZATION : don't reqister threads as active requests
+    ##we already introduced a new counter {active_threads}
+    ##then at the end of loop check if there is active threads
+    ##and block waiting on work done then check if loop became
+    ##active again ..
+    while ($loop->{active_threads} > 0) {
+        select undef,undef,undef,.01;
+        $loop->check_threads;
+        if (loop_alive($loop)) {
+            goto loop_again;
         }
-        
-        #debug "sleeping for $timeout\n";
     }
     
     $r = $loop->loop_alive;
-    
-    ##make sure all threads are gone
-    Rum::Loop::Pool::Close();
     
     if ($loop->{stop_flag} != 0) {
         $loop->{stop_flag} = 0;
     }
     return !$r ? 0 : 1;
+}
+
+sub check_threads {
+    my $loop = shift;
+    Rum::Loop::Pool::consume_work($loop);
 }
 
 sub run_pending {
@@ -335,8 +339,6 @@ sub finish_close {
     # A good example is when the user calls uv_shutdown(), immediately followed
     # by uv_close(). The handle is considered active at this point because the
     # completion of the shutdown req is still pending.
-    #die "handle already closing" if !($handle->{flags} & $CLOSING);
-    #die "handle already closed" if ($handle->{flags} & $CLOSED);
     
     assert($handle->{flags} & $CLOSING, "handle already closing");
     assert(!($handle->{flags} & $CLOSED), "handle already closed");
@@ -407,10 +409,6 @@ sub make_close_pending {
     die if !($handle->{flags} & $CLOSING);
     die if ($handle->{flags} & $CLOSED);
     push @{$loop->{closing_handles}}, $handle;
-}
-
-sub DESTROY {
-    Rum::Loop::Pool::Close();
 }
 
 1;

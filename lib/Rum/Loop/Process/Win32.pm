@@ -243,7 +243,6 @@ sub spawn {
     } else {
         $process->{process_handle} = $ret_val->[0] || -1;
         $process->{pid} = $ret_val->[2] || 0;
-        
         #close thread handle
         Rum::Loop::Core::CloseHandle($ret_val->[1]);
     }
@@ -304,11 +303,11 @@ sub spawn {
                 }
                 
                 if ($pipes->[$i]->[0] != -1){
-                    POSIX::close($pipes->[$i]->[0]) or die $!;
+                    POSIX::close(_getFD($pipes->[$i]->[0])) or die $!;
                 }
                 
                 if ($pipes->[$i]->[1] != -1){
-                    POSIX::close($pipes->[$i]->[1]) or die $!;
+                    POSIX::close(_getFD($pipes->[$i]->[1])) or die $!;
                 }
             }
             undef $pipes;

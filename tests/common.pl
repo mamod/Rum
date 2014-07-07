@@ -19,9 +19,8 @@ exports->{PORT} = $port ? $port+0 : 12346;
 exports->{spawnCat} = sub {
     my $options = shift;
     my $spawn = Require('child_process')->{spawn};
-    
     if (process->platform eq 'win32') {
-        return $spawn->('cat', [], $options);
+        return $spawn->('more.com', [], $options);
     } else {
         return $spawn->('cat', [], $options);
     }

@@ -13,6 +13,7 @@ print "\n# Rum app TESTS                              #";
 print "\n#--------------------------------------------#";
 
 print "\n";
+chmod 0777, 'rum.sh' or die $!;
 
 my %args = (
     verbosity => 0,

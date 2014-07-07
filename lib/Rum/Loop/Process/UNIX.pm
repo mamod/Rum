@@ -12,7 +12,6 @@ use Rum::Loop::Queue;
 use POSIX  qw[:errno_h :fcntl_h setsid :sys_wait_h];
 use Data::Dumper;
 
-
 sub _getFD {
     return defined(fileno $_[0]) ?
         fileno $_[0] : $_[0];
@@ -105,7 +104,7 @@ sub process_child_init {
         # that enable us to do super-user things. This will fail if we
         # aren't root, so don't bother checking the return value, this
         # is just done as an optimistic privilege dropping function.
-        die;
+        die "not implemented";
         #SAVE_ERRNO(setgroups(0, NULL));
     }
     
@@ -124,10 +123,10 @@ sub process_child_init {
     }
     
     $! = 0;
-    if ($options->{file} =~ /Rum\.sh/i){
-        $options->{file} = "perl";
-        unshift @{$options->{args}}, "runner.pl";
-    }
+    #if ($options->{file} =~ /Rum\.sh/i){
+    #    $options->{file} = "perl";
+    #    unshift @{$options->{args}}, "runner.pl";
+    #}
     
     my $e = exec( $options->{file}, @{$options->{args}} );
     __write_int($error_fd, $!+0);
@@ -283,11 +282,11 @@ sub spawn {
                 }
                 
                 if ($pipes->[$i]->[0] != -1){
-                    POSIX::close($pipes->[$i]->[0]) or die $!;
+                    POSIX::close(_getFD($pipes->[$i]->[0])) or die $!;
                 }
                 
                 if ($pipes->[$i]->[1] != -1){
-                    POSIX::close($pipes->[$i]->[1]) or die $!;
+                    POSIX::close(_getFD($pipes->[$i]->[1])) or die $!;
                 }
             }
             undef $pipes;

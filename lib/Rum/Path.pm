@@ -13,11 +13,6 @@ if ($isWindows) {
     *splitPath = *Rum::Path::POSIX::splitPath;
 }
 
-##is it being called from a Rum app?
-if ( $ENV{'Rum'} ) {
-    Rum::module()->{exports} = __PACKAGE__->new();
-}
-
 sub new {
     bless {}, __PACKAGE__;
 }

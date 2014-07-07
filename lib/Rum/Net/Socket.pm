@@ -227,24 +227,24 @@ sub onread {
     assert($handle == $self->{_handle}, 'handle != self._handle');
     
     Rum::Timers::_unrefActive($self);
-  
+    
     debug('onread', $nread);
-  
+    
     if ($nread > 0) {
         debug('got data');
-  
+        
         #read success.
         #In theory (and in practice) calling readStop right now
         #will prevent this from being called again until _read() gets
         #called again.
-  
+        
         #if it's not enough data, we'll just call handle.readStart()
         #again right away.
         $self->{bytesRead} += $nread;
-  
+        
         #Optimization: emit the original buffer with end points
         my $ret = $self->push($buffer->{base});
-  
+        
         if ($handle->{reading} && !$ret) {
             $handle->{reading} = 0;
             debug('readStop');
@@ -255,29 +255,29 @@ sub onread {
         }
         return;
     }
-  
+    
     #if we didn't get any bytes, that doesn't necessarily mean EOF.
     #wait for the next one.
     if ($nread == 0) {
         debug('not any data, keep waiting');
         return;
     }
-  
+    
     #Error, possibly EOF.
     if ($nread != $EOF) {
         return $self->_destroy($!);
     }
     
     debug('EOF');
-  
+    
     if (!$self->{_readableState}->{length}) {
         $self->{readable} = 0;
         maybeDestroy($self);
     }
-  
+    
     #push a null to signal the end of data.
     $self->push(undef);
-  
+    
     #internal end event so that we know that the actual socket
     #is no longer readable, and we can start the shutdown
     #procedure. No need to wait for all the data to be consumed.
@@ -578,6 +578,8 @@ sub _connect {
     my $err;
     
     if ($localAddress || $localPort) {
+        die "not implemented";
+        
         if ($localAddress && !isIP($localAddress)) {
             $err = Rum::Error->new(
                 'localAddress should be a valid IP: ' . $localAddress);
@@ -593,37 +595,24 @@ sub _connect {
             if (!$localAddress){
                 $localAddress = '0.0.0.0';
             }
+            
+            $bind = $self->{_handle}->{bind};
+            
         } elsif ($addressType == 6){
             die "Not implemented";
         } else {
             $err = Rum::Error->new('Invalid addressType: ' . $addressType);
         }
         
-        #switch (addressType) {
-        #  case 4:
-        #    if (!localAddress)
-        #      localAddress = '0.0.0.0';
-        #    bind = self._handle.bind;
-        #    break;
-        #  case 6:
-        #    if (!localAddress)
-        #      localAddress = '::';
-        #    bind = self._handle.bind6;
-        #    break;
-        #  default:
-        #    err = new TypeError('Invalid addressType: ' + addressType);
-        #    break;
-        #}
-        #
         if ($err) {
             $self->_destroy($err);
             return;
         }
         
         
-        #debug('binding to localAddress: %s and localPort: %d',
-        #      localAddress,
-        #      localPort);
+        debug('binding to localAddress: %s and localPort: %d',
+              $localAddress,
+              $localPort);
         
         #bind = bind.bind(self._handle);
         #err = bind(localAddress, localPort);

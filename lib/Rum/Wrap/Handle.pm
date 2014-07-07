@@ -37,7 +37,7 @@ sub OnClose {
     my $handle = shift;
     my $wrap = $handle->{data};
     die "The wrap object should still be there" if !$wrap;
-    die "the handle pointer should be gone" if $wrap->{handle__};
+    #die "the handle pointer should be gone" if $wrap->{handle__};
     
     if ( $wrap->{flags} && ($wrap->{flags} & $kCloseCallback) ) {
         Rum::MakeCallback2($wrap, 'onclose');

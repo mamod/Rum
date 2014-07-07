@@ -19,7 +19,6 @@ sub on { Rum::Events::on(@_) }
 
 sub pipe {
     my ($source, $dest, $options) = @_;
-    
     my $ondata = sub {
         my ($this,$chunk) = @_;
         if ($dest->{writable}) {
@@ -64,8 +63,8 @@ sub pipe {
     my $onerror = sub {
         my ($this,$er) = @_;
         $cleanup->();
-        if ($this.listenerCount($this, 'error') == 0) {
-            throw $er; #Unhandled stream error in pipe.
+        if ($this->listenerCount($this, 'error') == 0) {
+            $er->throw(); #Unhandled stream error in pipe.
         }
     };
     

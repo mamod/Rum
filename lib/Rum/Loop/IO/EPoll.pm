@@ -184,21 +184,19 @@ sub Rum::Loop::IO::io_poll {
     
     assert($timeout >= -1);
     $base = $loop->{time};
-    
     $count = 48; # Benchmarks suggest this gives the best throughput.
     
     for (;;) {
         
-        my $wait = $timeout == -1 ? -1 : $timeout * 1000;
         $nfds = epoll_wait($loop->{backend_fd},
                             $events,
                             $loop->{nfds},
-                            $wait);
+                            $timeout);
         
+        #print Dumper $nfds;
         # Update loop->time unconditionally. It's tempting to skip the update when
         # timeout == 0 (i.e. non-blocking poll) but there is no guarantee that the
         # operating system didn't reschedule our process while in the syscall.
-        #print Dumper $nfds;
         
         $loop->update_time();
         

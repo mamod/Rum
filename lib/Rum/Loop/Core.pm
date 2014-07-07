@@ -123,8 +123,7 @@ sub make_pipe {
     ##but we will try it anyway to make sure
     cloexec($fds->[0], 1);
     cloexec($fds->[1], 1);
-    
-    if ($flags & $NONBLOCK) {
+    if ($flags) {
         nonblock($fds->[0], 1);
         nonblock($fds->[1], 1);
     }

@@ -4,21 +4,31 @@ use warnings;
 use Data::Dumper;
 
 my $NativeModules = {
-    'path'   => 'Rum::Path',
-    'util'   => 'Rum::Lib::Utils',
-    'events' => 'Rum::Lib::Events',
-    'buffer' => 'Rum::Buffer',
-    'domain' => 'Rum::Domain',
-    'stream' => 'Rum::Lib::Stream',
-    'assert' => 'Rum::Lib::Assert',
-    'test'   => 'Rum::Lib::Test',
-    'fs'     => 'Rum::Fs',
-    'os'     => 'Rum::Lib::OS',
-    'buffer' => 'Rum::Lib::Buffer',
-    'net'    => 'Rum::Net',
-    'tty'    => 'Rum::Lib::TTY',
+    'path'           => 'Rum::Lib::Path',
+    'util'           => 'Rum::Lib::Utils',
+    'events'         => 'Rum::Lib::Events',
+    'buffer'         => 'Rum::Buffer',
+    'domain'         => 'Rum::Domain',
+    'stream'         => 'Rum::Lib::Stream',
+    'assert'         => 'Rum::Lib::Assert',
+    'test'           => 'Rum::Lib::Test',
+    'fs'             => 'Rum::Fs',
+    'os'             => 'Rum::Lib::OS',
+    'buffer'         => 'Rum::Lib::Buffer',
+    'net'            => 'Rum::Net',
+    'tty'            => 'Rum::Lib::TTY',
     'string_decoder' => 'Rum::Lib::StringDecoder',
-    'child_process' => 'Rum::Lib::ChildProcess'
+    'child_process'  => 'Rum::Lib::ChildProcess',
+    'repl'           => 'Rum::Lib::REPL',
+    'dns'            => 'Rum::DNS',
+    ##Http
+    'http'           => 'Rum::HTTP',
+    '_http_incoming' => 'Rum::HTTP::Incoming',
+    '_http_common'   => 'Rum::HTTP::Common',
+    '_http_agent'    => 'Rum::HTTP::Agent',
+    '_http_client'   => 'Rum::HTTP::Client',
+    '_http_outgoing' => 'Rum::HTTP::Outgoing',
+    '_http_server'   => 'Rum::HTTP::Server'
 };
 
 my $EX = {};

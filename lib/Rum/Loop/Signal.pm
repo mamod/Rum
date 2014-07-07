@@ -59,7 +59,7 @@ sub signal_init {
     my ($loop, $handle) = @_;
     my $err;
     
-    signal_loop_once_init($loop) or die;
+    signal_loop_once_init($loop) or die $!;
     
     $loop->handle_init($_[1], 'SIGNAL');
     $_[1]->{signum} = 0;
@@ -78,7 +78,7 @@ sub signal_loop_once_init {
     }
     
     Rum::Loop::Core::make_pipe($loop->{signal_pipefd},
-                    $NONBLOCK) or return;
+                    1) or return;
     
     $loop->io_init(
             $loop->{signal_io_watcher},

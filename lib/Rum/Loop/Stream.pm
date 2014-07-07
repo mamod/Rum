@@ -720,7 +720,7 @@ sub __stream_recv_cmsg {
 sub _read {
     my $loop = shift;
     my $stream = shift;   
-    my $bufflen = 64 * 1024;
+    my $bufflen = 16 * 1024;
     
     $stream->{flags} &= ~$STREAM_READ_PARTIAL;
     my $inHdr;
@@ -740,8 +740,7 @@ sub _read {
         my $buf = {
             base => '',
             len => 0,
-            fds => [],
-            pid => $$
+            fds => []
         };
         
         assert(stream_fd($stream) >= 0);

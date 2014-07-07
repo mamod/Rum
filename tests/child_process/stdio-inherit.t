@@ -37,6 +37,7 @@ sub grandparent {
         is($code, 0);
         ok(!$signal);
         #cat on windows adds a \r\n at the end.?!
+        $output =~ s/(.*)\r\n/$1/; #trim
         $assert->equal($output, $input);
     });
     
