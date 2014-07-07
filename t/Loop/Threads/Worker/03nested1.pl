@@ -8,7 +8,6 @@ use FindBin qw($Bin);
 
 my $loop = Rum::Loop->new();
 my @capture;
-use threads;
 
 return sub {
     my $req = shift;
