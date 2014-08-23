@@ -1,6 +1,8 @@
 Rum is still in very pre alpha :)
 =================================
 
+[![Build Status](https://travis-ci.org/mamod/Rum.svg?branch=master)](https://travis-ci.org/mamod/Rum)
+
 This is an attempt to port node js API and libuv to pure perl
 
 Project Notes
