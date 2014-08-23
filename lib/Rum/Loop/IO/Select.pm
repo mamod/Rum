@@ -34,16 +34,12 @@ sub Rum::Loop::IO::platform_invalidate_fd {
     my $fd = shift;
     my $ev = shift;
     
+    #silent errors
     eval {
         vec($loop->{sEvents}->[0], $fd, 1) = 0;
         vec($loop->{sEvents}->[1], $fd, 1) = 0;
         vec($loop->{sEvents}->[2], $fd, 1) = 0;
     };
-    
-    if ($@) {
-        #debug
-        #print Dumper $@;
-    }
 }
 
 sub Rum::Loop::IO::io_poll {
@@ -67,7 +63,8 @@ sub Rum::Loop::IO::io_poll {
         return;
     }
     
-    while (!QUEUE_EMPTY($loop->{watcher_queue})) {
+    $count = 50;
+    while (!QUEUE_EMPTY($loop->{watcher_queue}) && $count-- ) {
         $q = QUEUE_HEAD($loop->{watcher_queue});
         $w = $q->{data};
         QUEUE_REMOVE($q);
@@ -95,25 +92,7 @@ sub Rum::Loop::IO::io_poll {
             
         } else {
             die "shouldn't get here!!!";
-            #$op = $EPOLL_CTL_MOD;
         }
-        
-        #XXX Future optimization: do EPOLL_CTL_MOD lazily if we stop watching
-        #events, skip the syscall and squelch the events after epoll_wait().
-        #$e = pack("LLL", $w->{pevents}, $w->{fd}, 0);
-        #if ( epoll_ctl($loop->{backend_fd}, $op, $w->{fd}, $e) ) {
-        #    if ( $! != EEXIST ){
-        #        die $!;
-        #    }
-        #    
-        #    assert($op == $EPOLL_CTL_ADD);
-        #    #We've reactivated a file descriptor that's been watched before.
-        #    if ( epoll_ctl($loop->{backend_fd}, $EPOLL_CTL_MOD, $w->{fd}, $e) ){
-        #        die;
-        #    }
-        #    
-        #    $w->{events} = $w->{pevents};
-        #}
     }
     
     assert($timeout >= -1);
@@ -125,7 +104,7 @@ sub Rum::Loop::IO::io_poll {
     my $wout = '';
     my $eout = '';
     my $wait;
-    
+    if (!QUEUE_EMPTY($loop->{watcher_queue})) {$timeout = 0}
     for (;;) {
         $wait = $timeout == -1 ? undef : $timeout/1000;
         

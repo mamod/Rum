@@ -16,7 +16,7 @@ use FindBin qw($Bin);
 
 use Rum::IO;
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 ## Global Variables =====================================================
 my $SELF;
@@ -117,10 +117,9 @@ sub process       {    $PROCESS   }
 sub MakeCallback {
     my ($obj,$name) = (shift,shift);
     MakeCallback2($obj,$name,$obj,@_);
-    Rum::Process::_tickCallback();
 }
 
-sub MakeCallback2 {    
+sub MakeCallback2 {
     my $handle = shift;
     my $string = shift;
     
@@ -128,13 +127,15 @@ sub MakeCallback2 {
     my $callback = $handle->{$string};
     my $process = process();
     my $ret;
-    
-    try {
+    my $throw = 1;
+    eval {
         $ret = $callback->(@args);
-    } catch {
-        die @_;
+        $throw = 0;
     };
-
+    if ($throw) {
+        die $@;
+    }
+    
     my $tick_info = $process->tick_info();
     if ( $tick_info->{in_tick} ) {
         return $ret;
@@ -148,7 +149,6 @@ sub MakeCallback2 {
     $tick_info->{in_tick} = 1;
     Rum::Process::_tickCallback();
     $tick_info->{in_tick} = 0;
-    
     return $ret;
 }
 
@@ -278,9 +278,12 @@ sub run {
             }
         }
     } while ( $more );
+    
+    setTimeout(sub{},0);
+    $loop->run();
+    
     $code = EmitExit();
     RunAtExit();
-    
     Rum::Process::_tickCallback();
     #$loop->run();
     #EmitExit();
@@ -295,7 +298,6 @@ sub NeedImmediateCallbackSetter {
     my $value = shift;
     
     my $active = Rum::Loop::is_active($immediate_check_handle);
-    
     if ( $active == $value ) {
         return;
     }
@@ -345,9 +347,9 @@ package Rum::Process; {
     use strict;
     use warnings;
     use base 'Rum::Events';
+    use Time::HiRes qw[gettimeofday time];
     
     my @nextTickQueue = ();
-    
     use Data::Dumper;
     sub execPath { $SELF->{execPath} }
     sub execArgs { \@execArgs }
@@ -391,6 +393,17 @@ package Rum::Process; {
     sub _send {
         my $this = shift;
         $this->{_send}->($this, @_);
+    }
+    
+    sub hrtime {
+        my $self = shift;
+        my ($seconds, $microseconds) = gettimeofday;
+        if ($_[0]) {
+            die if ref $_[0] ne 'ARRAY';
+            $seconds -= $_[0]->[0];
+            $microseconds -= $_[0]->[1];
+        }
+        return [$seconds, $microseconds];
     }
 }
 

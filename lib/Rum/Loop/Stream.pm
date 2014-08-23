@@ -4,14 +4,12 @@ use warnings;
 use Rum::Loop::TCP ();
 use Rum::Loop::Queue;
 use Rum::Loop::Utils 'assert';
+use Rum::Loop::SendRecv;
 use Rum::Loop::Flags qw(:Stream :IO :Errors :Platform $CLOSING $CLOSED $KQUEUE);
-use Data::Dumper;
 use IO::Handle;
 use Socket;
 use POSIX ();
-
-use Rum::Loop::SendRecv;
-
+use Data::Dumper;
 use POSIX ':errno_h';
 use base qw/Exporter/;
 our @EXPORT = qw (
@@ -29,6 +27,9 @@ our @EXPORT = qw (
     is_readable
     is_writable
 );
+
+##FIXME this may mess signals module?!
+$SIG{PIPE} = 'IGNORE';
 
 my $UNKNOWN_HANDLE = 0;
 
@@ -95,7 +96,6 @@ sub server_io {
     my ($loop, $w, $events) = @_;
     my $err;
     my $stream = $w->{stream};
-    
     assert( $events & $POLLACCEPT );
     assert(!($stream->{flags} & $CLOSING));
     
@@ -134,11 +134,10 @@ sub server_io {
             return 1;
         }
         
-        #if ($stream->{type} eq 'TCP' && ($stream->{flags} & TCP_SINGLE_ACCEPT)) {
-            # Give other processes a chance to accept connections. */
-            #select undef,undef,undef,.1;
+        #if ($stream->{type} eq 'TCP' && ($stream->{flags} & $SINGLE_ACCEPT)) {
+        #    #Give other processes a chance to accept connections. */
+        #    select undef,undef,undef,.1;
         #}
-        #last;
     }
     return 1;
 }
@@ -161,8 +160,6 @@ sub write2 {
         $bufs = [$bufs];
     }
     
-    my $empty_queue;
-    
     assert($nbufs > 0);
     assert(($stream->{type} eq 'TCP' ||
             $stream->{type} eq 'NAMED_PIPE' ||
@@ -175,7 +172,6 @@ sub write2 {
     }
     
     if ($send_handle) {
-        
         if ( $stream->{type} ne 'NAMED_PIPE' || !$stream->{ipc} ){
             $! = EINVAL;
             return;
@@ -188,7 +184,6 @@ sub write2 {
         #which works but only by accident.
         if (handle_fd($send_handle) < 0){
             $! = EBADF;
-            die;
             return;
         }
     }
@@ -199,7 +194,7 @@ sub write2 {
     #We chould check that write_queue is empty instead but that implies making
     #a write() syscall when we know that the handle is in error mode.
     
-    $empty_queue = ($stream->{write_queue_size} == 0);
+    my $empty_queue = ($stream->{write_queue_size} == 0);
     
     #Initialize the req
     $loop->req_init($req, 'WRITE');
@@ -209,9 +204,7 @@ sub write2 {
     $req->{off} = 0;
     $req->{send_handle} = $send_handle;
     $req->{queue} = QUEUE_INIT($req);
-    
     $req->{bufs} = $req->{bufsml} = $bufs;
-    
     if (!$req->{bufs}){
         $! = ENOMEM;
         return;
@@ -242,6 +235,28 @@ sub write2 {
     return 1;
 }
 
+sub _writev {
+    my $fh = shift;
+    my $data = shift;
+    my $index = shift;
+    my $bufnum = shift;
+    #my $str = join '', @{$data};
+    my $str = '';
+    for ($index .. @{$data} - 1){
+        $str .=  $data->[$_];
+        last if length $str >= 160 * 1024;
+    }
+    
+    ##to avoid constructing string over and over again
+    ##on failure we loop for errors here too
+    my $n = 0;
+    do {
+        $n = syswrite($fh, $str, length $str);
+    } while (!defined $n && $! == EINTR);
+    
+    return $n;
+}
+
 sub uv__write {
     my $loop = shift;
     my $stream = shift;
@@ -252,33 +267,29 @@ sub uv__write {
     
     start : {
         assert(stream_fd($stream) >= 0);
-        
-        if (QUEUE_EMPTY($stream->{write_queue})){
-            return;
-        }
-        
+        if (QUEUE_EMPTY($stream->{write_queue})) { return; }
         $q = QUEUE_HEAD($stream->{write_queue});
         $req = $q->{data};
         assert($req->{handle} == $stream);
-        
-        my $iov = $req->{bufs}->[$req->{write_index}];
-        
+        my $iov = $req->{bufs};
         my $iovcnt = $req->{nbufs} - $req->{write_index};
-        
         if ($req->{send_handle}) {
             $! = 0;
             my $fd_to_send = handle_fd($req->{send_handle});
             my $fh_to_send = stream_fh($req->{send_handle});
             my $pid = $stream->{ipc_pid};
-            
             do {
-                $n = sendmsg(stream_fh($stream), $iov, $fd_to_send, $pid);
+                $n = sendmsg(stream_fh($stream), $iov->[0], $fd_to_send, $pid);
             } while (!defined $n && $! == EINTR);
             
         } else {
             do {
-                $n = syswrite(stream_fh($stream), $iov,
-                              length $iov);
+                if ($iovcnt == 1) {
+                    $n = syswrite(stream_fh($stream), $iov->[$req->{write_index}],
+                              length $iov->[$req->{write_index}]);
+                } else {
+                    $n = _writev(stream_fh($stream), $iov, $req->{write_index}, $iovcnt);
+                }
             } while (!defined $n && $! == EINTR);
         }
         
@@ -299,19 +310,15 @@ sub uv__write {
         } else {
             #Successful write
             while ($n >= 0) {
-                
                 my $len = length $req->{bufs}->[$req->{write_index}];
                 assert($req->{write_index} < $req->{nbufs});
-                
                 if ($n < $len) {
                     my $new = substr $req->{bufs}->[$req->{write_index}], $n;
                     undef $req->{bufs}->[$req->{write_index}];
                     $req->{bufs}->[$req->{write_index}] = $new;
                     undef $new;
-                    
                     $stream->{write_queue_size} -= $n;
                     $n = 0;
-                    
                     #There is more to write.
                     if ($stream->{flags} & $STREAM_BLOCKING) {
                         #If we're blocking then we should not be enabling the write
@@ -321,19 +328,15 @@ sub uv__write {
                         #Break loop and ensure the watcher is pending. */
                         last;
                     }
-                    
                 } else {
                     #undef $req->{bufs}->[$req->{write_index}];
                     #Finished writing the buf at index req->write_index.
                     $req->{off} = 0;
                     $req->{write_index}++;
-                    
                     assert($n >= $len);
                     $n -= $len;
-                    
                     assert($stream->{write_queue_size} >= $len);
                     $stream->{write_queue_size} -= $len;
-                    
                     if ($req->{write_index} == $req->{nbufs}) {
                         #Then we're done!
                         assert($n == 0);
@@ -366,17 +369,11 @@ sub try_write {
     my $req = {};
     
     #Connecting or already writing some data */
-    if ($stream->{connect_req} || $stream->{write_queue_size} != 0){
-        return 1;
-    }
-    
+    if ($stream->{connect_req} || $stream->{write_queue_size} != 0) { return 1 }
     my $has_pollout = $loop->io_active($stream->{io_watcher}, $POLLOUT);
-    
     my $r = $loop->write($req, $stream, $bufs, $nbufs, \&try_write_cb);
     
-    if (!defined $r){
-        return;
-    }
+    if (!defined $r){ return; }
     
     #Remove not written bytes from write queue size
     my $written = uv_count_bufs($bufs, $nbufs);
@@ -393,24 +390,19 @@ sub try_write {
     #Unqueue request, regardless of immediateness
     QUEUE_REMOVE($req->{queue});
     $loop->req_unregister($req);
-    
     undef $req->{bufs};
-    
     # Do not poll for writable, if we wasn't before calling this
     if (!$has_pollout) {
         $loop->io_stop($stream->{io_watcher}, $POLLOUT);
     }
-    
     return $written;
 }
-
-
 
 sub uv__write_req_finish {
     my $loop = shift;
     my $req = shift;
     my $stream = $req->{handle};
-    
+
     # Pop the req off tcp->write_queue.
     QUEUE_REMOVE($req->{queue});
     
@@ -440,12 +432,10 @@ sub uv__write_callbacks {
         my $req = $q->{data};
         QUEUE_REMOVE($q);
         $loop->req_unregister($req);
-        
         if ($req->{bufs}) {
             $stream->{write_queue_size} -= uv__write_req_size($req);
             undef $req->{bufs};
         }
-        
         if ($req->{cb}){
             $req->{cb}->($req, $req->{error});
         }
@@ -463,7 +453,6 @@ sub uv__drain {
     my ($req,$err);
     assert(QUEUE_EMPTY($stream->{write_queue}));
     $loop->io_stop($stream->{io_watcher}, $POLLOUT);
-    
     if (($stream->{flags} & $STREAM_SHUTTING) &&
       !($stream->{flags} & $CLOSING) &&
       !($stream->{flags} & $STREAM_SHUT)) {
@@ -472,7 +461,6 @@ sub uv__drain {
         undef $stream->{shutdown_req};
         $stream->{flags} &= ~$STREAM_SHUTTING;
         $loop->req_unregister($req);
-        
         $err = 0;
         if (!shutdown(stream_fh($stream), 1)){
             $err = $!;
@@ -492,10 +480,10 @@ sub uv_count_bufs {
     my $bufs = shift;
     my $nbufs = shift;
     my $index = shift || 0;
-    
     my $bytes = 0;
+    
     for (my $i = $index; $i < $nbufs; $i++) {
-        $bytes += length $bufs->[$i] if defined $bufs->[$i];
+        $bytes += length $bufs->[$i];
     }
     
     return $bytes;
@@ -503,7 +491,6 @@ sub uv_count_bufs {
 
 sub uv__write_req_size {
     my $req = shift;
-    
     assert(defined $req->{bufs});
     my $size = uv_count_bufs($req->{bufs},
                        $req->{nbufs} - $req->{write_index}, $req->{write_index});
@@ -514,20 +501,17 @@ sub uv__write_req_size {
 sub stream_io {
     my ($loop, $w, $events) = @_;
     my $stream = $w->{stream};
-    
     assert($stream->{type} eq 'TCP' ||
             $stream->{type} eq 'NAMED_PIPE' ||
             $stream->{type} eq 'TTY');
     
     assert(!($stream->{flags} & $CLOSING));
-    
     if ($stream->{connect_req}) {
         _stream_connect($loop,$stream);
         return;
     }
     
     assert(stream_fd($stream) >= 0);
-    
     #Ignore POLLHUP here. Even it it's set, there may still be data to read.
     if ($events & ($POLLIN | $POLLERR)) {
         _read($loop,$stream);
@@ -570,25 +554,19 @@ sub _close {
 
 sub accept {
     my ($loop, $server, $client) = @_;
-    #TODO document this
-    #assert($server != $client);
     $! = 0;
     my $err = 0;
-    
     if ($server->{accepted_fd} == -1) {
         $! = $EAGAIN;
         return;
     }
     
     my $type = $client->{type};
-    
     if ($type eq 'NAMED_PIPE' || $type eq 'TCP') {
         if (!stream_open($client,
             $server->{accepted_fh},
             $STREAM_READABLE | $STREAM_WRITABLE)){
             _close($server->{accepted_fh});
-            #$server->{accepted_fh} = 0;
-            #$server->{accepted_fd} = -1;
             $err = $!;
             goto done;
         }
@@ -605,10 +583,8 @@ sub accept {
             $server->{accepted_fh} = $fh;
             $server->{accepted_fd} = fileno $fh;
         } else {
-            
             $server->{accepted_fd} = -1;
             $server->{accepted_fh} = 0;
-            
             if ($err == 0) {
                 $loop->io_start($server->{io_watcher}, $POLLACCEPT);
             }
@@ -621,19 +597,13 @@ sub accept {
 sub stream_open {
     my ($stream, $fh, $flags) = @_;
     my $fd = fileno $fh;
-    
-    if (!defined $fd) {
-        return;
-    }
-    
+    if (!defined $fd) { return; }
     assert($fd >= 0);
     $stream->{flags} |= $flags;
-    
     if ($stream->{type} eq 'TCP') {
         if (($stream->{flags} & $TCP_NODELAY) && uv__tcp_nodelay($fh, 1)){
             return;
         }
-        
         #TODO Use delay the user passed in.
         if (($stream->{flags} & $TCP_KEEPALIVE) && uv__tcp_keepalive($fh, 1, 60)){
             #return -errno;
@@ -643,7 +613,6 @@ sub stream_open {
     
     $stream->{io_watcher}->{fh} = $fh;
     $stream->{io_watcher}->{fd} = $fd;
-    
     return 1;
 }
 
@@ -652,7 +621,6 @@ sub __stream_queue_fd {
     push @{$stream->{queued_fds}}, $fd;
     return 1;
 }
-
 
 #We get called here from directly following a call to connect(2).
 #In order to determine if we've errored out or succeeded must call
@@ -663,10 +631,8 @@ sub _stream_connect {
     my $error = 0;
     $! = 0;
     my $req = $stream->{connect_req};
-    
     assert($stream->{type} eq 'TCP' || $stream->{type} eq 'NAMED_PIPE');
     assert($req);
-    
     if ($stream->{delayed_error}) {
         # To smooth over the differences between unixes errors that
         # were reported synchronously on the first connect can be delayed
@@ -716,15 +682,12 @@ sub __stream_recv_cmsg {
     return 1;
 }
 
-
+my $BUFLEN = 15 * 1024;
 sub _read {
     my $loop = shift;
-    my $stream = shift;   
-    my $bufflen = 16 * 1024;
-    
+    my $stream = shift;
     $stream->{flags} &= ~$STREAM_READ_PARTIAL;
     my $inHdr;
-
     my $is_ipc = $stream->{type} eq 'NAMED_PIPE' && $stream->{ipc};
     #Prevent loop starvation when the data comes in as fast as (or faster than)
     #we can read it. XXX Need to rearm fd if we switch to edge-triggered I/O.
@@ -736,7 +699,6 @@ sub _read {
         && ($stream->{flags} & $STREAM_READING)
         && ($count-- > 0)) {
         my $nread;
-        
         my $buf = {
             base => '',
             len => 0,
@@ -746,7 +708,7 @@ sub _read {
         assert(stream_fd($stream) >= 0);
         if (!$is_ipc) {
             do {
-                $nread = sysread(stream_fh($stream), $buf->{base}, $bufflen);
+                $nread = sysread(stream_fh($stream), $buf->{base}, $BUFLEN);
             } while (!defined $nread && $! == EINTR);
             $buf->{len} = $nread ? $nread : 0;
         } else {
@@ -765,7 +727,6 @@ sub _read {
                 }
                 $stream->{read_cb}->($stream, 0, $buf);
             } else {
-                
                 if ($isWin && $! == ECONNABORTED){
                     $! = ECONNRESET;
                 }
@@ -817,7 +778,6 @@ sub __stream_eof {
     __stream_read_cb($stream, $EOF, $buf, $UNKNOWN_HANDLE);
 }
 
-
 sub stream_close {
     my $loop = shift;
     my $handle = shift;
@@ -859,7 +819,6 @@ sub read_stop {
     #Sanity check. We're going to stop the handle unless it's primed for
     #writing but that means there should be some kind of write action in
     #progress.
-    
     assert(!$loop->io_active($stream->{io_watcher}, $POLLOUT) ||
          !QUEUE_EMPTY($stream->{write_completed_queue}) ||
          !QUEUE_EMPTY($stream->{write_queue}) ||
@@ -880,7 +839,6 @@ sub read_stop {
 sub stream_destroy {
     my $loop = shift;
     my $stream = shift;
-    
     my $req;
     my $q;
     
@@ -899,11 +857,8 @@ sub stream_destroy {
         $q = QUEUE_HEAD($stream->{write_queue});
         $req = $q->{data};
         QUEUE_REMOVE($q);
-        
         $loop->req_unregister($stream->{loop}, $req);
-        
         undef $req->{bufs};
-        
         if ($req->{cb}) {
             $req->{cb}->($req, $ECANCELED);
         }
@@ -914,7 +869,6 @@ sub stream_destroy {
         $req = $q->{data};
         QUEUE_REMOVE($q);
         $loop->req_unregister($req);
-        
         if ($req->{bufs}) {
             $stream->{write_queue_size} -= uv__write_req_size($req);
             undef $req->{bufs};
@@ -935,20 +889,20 @@ sub stream_destroy {
         undef $stream->{shutdown_req};
     }
     
+    ##Totally destroy stream queue circular references
+    delete $stream->{write_queue}->{next};
+    delete $stream->{write_queue}->{prev};
     delete $stream->{write_queue}->{data};
+    delete $stream->{write_completed_queue}->{next};
+    delete $stream->{write_completed_queue}->{prev};
     delete $stream->{write_completed_queue}->{data};
     delete $stream->{io_watcher};
 }
 
 sub _read_start_common {
     my ($loop, $stream ,$read_cb,$read2_cb) = @_;
-    
     $! = 0;
-    
-    #print STDERR Dumper $stream;
-    
     my $type = $stream->{type};
-    
     assert($type =~ /(TCP|NAMED_PIPE|TTY)/, $type);
     
     if ($stream->{flags} & $CLOSING) {
@@ -963,13 +917,10 @@ sub _read_start_common {
     ##TODO: try to do the read inline?
     ##TODO: keep track of tcp state. If we've gotten a EOF then we should
     ##not start the IO watcher.
-    
     assert(stream_fd($stream) >= 0, stream_fd($stream));
-    
     $stream->{read_cb}  = $read_cb;
     $stream->{read2_cb} = $read2_cb;
     undef $stream->{buffer};
-    
     #some tests fails when we do read inline, need to fix test before
     #implement inline reads as suggested by libuv team
     #if (!_read($loop,$stream) && $stream->{io_watcher}->{fd} != -1){
@@ -995,14 +946,12 @@ sub shutdown {
     }
     
     assert(stream_fd($stream) >= 0);
-    
     #Initialize request
     $loop->req_init($req, 'SHUTDOWN');
     $req->{handle} = $stream;
     $req->{cb} = $cb;
     $stream->{shutdown_req} = $req;
     $stream->{flags} |= $STREAM_SHUTTING;
-    
     $loop->io_start($stream->{io_watcher}, $POLLOUT);
     return 1;
 }

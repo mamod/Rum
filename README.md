@@ -16,27 +16,47 @@ Project Notes
 
 * Using perl core modules only
 
+Implemented Modules
+===================
+
+* Path
+
+* Net
+
+* http
+
+* module
+
+* Events
+
+* Stream
+
+* Timers
+
+* Child Process
+
 TODO NEXT
 =========
 
 * Kqueue for bsd instead of select
 
-* http/https modules
+* SSL & https
+
+* UDP/Datagram
 
 * Fix filesystem (fs.pm) module
 
-* IPv6 - currently only IPv4 supported 
+* IPv6 - currently only IPv4 supported
+
+* URL
 
 Examples
 ========
 
-See examples folder, you can also look at the tests especially t/Loop
-and tests folder
+See examples folder, you can also look at the tests especially ./t/Loop
+and ./tests folders
 
 Is it of any use?
 =================
 
 What do you think?
-
-For me, I'm really not sure, but it was a very fun and educated experience, I got inside
-libuv and node internals using my favorite language :)

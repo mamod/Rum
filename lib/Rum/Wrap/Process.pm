@@ -7,7 +7,6 @@ use Rum::Loop;
 use Rum::Loop::Flags qw[:Process :Stdio :Platform];
 use Rum::Loop::Utils 'assert';
 my $util = 'Rum::Utils';
-
 my $loop = Rum::Loop::default_loop();
 
 sub new {
@@ -84,7 +83,7 @@ sub spawn {
     $! = 0;
     my $ret = $loop->spawn($wrap->{handle__}, $options);
     if ($ret) {
-        assert($wrap->{handle__}->{data} == $wrap);
+        assert(getHandleData($wrap->{handle__}) == $wrap);
         $wrap->{pid}  = $wrap->{handle__}->{pid};
     }
     
@@ -134,10 +133,20 @@ sub ParseStdioOptions {
 
 sub OnExit {
     my ($handle, $exit_status, $term_signal) = @_;
-    my $wrap = $handle->{data};
+    my $wrap = getHandleData($handle);
     assert($wrap);
     assert($wrap->{handle__} == $handle);
     Rum::MakeCallback2($wrap,'onexit',$exit_status,$term_signal);
+}
+
+sub kill {
+    my $wrap = shift;
+    my $signal = shift;
+    if (!$loop->process_kill($wrap->{handle__}, $signal)){
+        return $!;
+    }
+    
+    return 0;
 }
 
 1;

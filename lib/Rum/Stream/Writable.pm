@@ -1,6 +1,5 @@
 package Rum::Stream::Writable;
 use lib '../../';
-
 use warnings;
 use strict;
 use Rum;
@@ -132,7 +131,6 @@ sub decodeChunk {
     return $chunk;
 }
 
-
 #if we're already writing something, then just put this
 #in the queue, and wait our turn.  Otherwise, call _write
 #If we return false, then we need a drain event, so set that flag.
@@ -143,7 +141,7 @@ sub writeOrBuffer {
         $encoding = 'buffer';
     }
     
-    my $len = $state->{objectMode} ? 1 : _getLength($chunk);
+    my $len = $state->{objectMode} ? 1 : $util->BufferOrStringLength($chunk);
     
     $state->{length} += $len;
 
@@ -182,7 +180,7 @@ sub onwriteError {
         $state->{pendingcb}--;
         $cb->($er);
     }
-
+    
     $stream->emit('error', $er);
 }
 
@@ -197,6 +195,7 @@ sub onwriteStateUpdate {
 sub onwrite {
     my ($stream, $er) = @_;
     my $state = $stream->{_writableState};
+    return if !$state;
     my $sync = $state->{sync};
     my $cb = $state->{writecb};
     
@@ -210,9 +209,9 @@ sub onwrite {
         my $finished = needFinish($stream, $state);
         
         if (!$finished &&
-        !$state->{corked} &&
-        !$state->{bufferProcessing} &&
-        scalar @{$state->{buffer}} ) {
+             !$state->{corked} &&
+             !$state->{bufferProcessing} &&
+             scalar @{$state->{buffer}} ) {
             clearBuffer($stream, $state);
         }
         
@@ -249,7 +248,6 @@ sub onwriteDrain {
     }
 }
 
-
 #if there's something in the buffer waiting, then process it
 sub clearBuffer {
     my ($stream, $state) = @_;
@@ -274,7 +272,7 @@ sub clearBuffer {
         });
         
         #Clear buffer
-        $state->buffer = [];
+        $state->{buffer} = [];
     } else {
         #Slow case, write chunks one-by-one
         my $c;
@@ -284,7 +282,7 @@ sub clearBuffer {
             my $chunk = $entry->{chunk};
             my $encoding = $entry->{encoding};
             my $cb = $entry->{callback};
-            my $len = $state->{objectMode} ? 1 : _getLength($chunk);
+            my $len = $state->{objectMode} ? 1 : $util->BufferOrStringLength($chunk);
             
             doWrite($stream, $state, 0, $len, $chunk, $encoding, $cb);
             
@@ -301,11 +299,10 @@ sub clearBuffer {
         if ($c < scalar @{ $state->{buffer} } ){
             $state->{buffer} = [splice @{$state->{buffer}}, $c];
         } else {
-            #$state->{buffer}->{length} = 0;
             $state->{buffer} = [];
         }
     }
-
+    
     $state->{bufferProcessing} = 0;
 }
 
@@ -339,7 +336,7 @@ sub end {
         $state->{corked} = 1;
         $this->uncork();
     }
-
+    
     #ignore unnecessary end() calls.
     if (!$state->{ending} && !$state->{finished}){
         endWritable($this, $state, $cb);
@@ -391,14 +388,10 @@ sub endWritable {
     $state->{ended} = 1;
 }
 
-##get length of either buffer or string
-sub _getLength {
-    return !ref $_[0] ? length $_[0] : $_[0]->length;
-}
-
 package Rum::Stream::Writable::State; {
     use strict;
     use warnings;
+    use Scalar::Util 'weaken';
     use Data::Dumper;
     sub new {
         my ($class, $options, $stream) = @_;
@@ -461,13 +454,15 @@ package Rum::Stream::Writable::State; {
         $this->{bufferProcessing} = 0;
         
         #the callback that's passed to _write(chunk,cb)
+        my $sub = \&Rum::Stream::Writable::onwrite;
+        weaken $stream;
         $this->{onwrite} = sub {
             my ($r,$er) = @_;
             Rum::process->nextTick(sub{
-                Rum::Stream::Writable::onwrite($stream, $er);
+                $sub->($stream, $er);
             });
         };
-        
+        weaken $sub;
         #the callback that the user supplies to write(chunk,encoding,cb)
         $this->{writecb} = undef;
         

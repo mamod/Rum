@@ -3,6 +3,7 @@ use Rum::Utils;
 use strict;
 use warnings;
 use Carp;
+use Scalar::Util 'weaken';
 use Data::Dumper;
 our $defaultMaxListeners = 10;
 my $Utils = Rum::Utils->new();
@@ -89,11 +90,13 @@ sub addListener {
 sub on {&addListener}
 
 sub once  {
+    #return &on;
     my ($this, $type, $listener) = @_;
     if (ref $listener ne 'CODE' ) {
         Carp::croak('listener must be a function');
     }
     my $fired = 0;
+    weaken $this;
     my $obj = bless {}, 'Rum::Events::Once';
     $obj->{do} = sub {
         $this->removeListener($type,$obj);
@@ -105,6 +108,7 @@ sub once  {
     
     $obj->{listener} = $listener;
     $this->on($type, $obj);
+    weaken $obj;
     return $this;
 }
 
@@ -112,13 +116,13 @@ sub once  {
 sub removeListener  {
     my ($this, $type, $listener) = @_;
     my ($list, $position, $length, $i,$ref);
-
+    
     if (ref $listener ne 'CODE' && ref $listener ne 'Rum::Events::Once') {
         Carp::croak('listener must be a function');
     }
     
     return $this if (!$this->{_events} || !$this->{_events}->{$type});
-
+    
     $list = $this->{_events}->{$type};
     $ref = ref $list;
     $length = ref $this->{_events}->{$type} eq 'ARRAY' ?  scalar @{$list} : 0;
@@ -186,7 +190,7 @@ sub emit  {
                 $er->{domainThrown} = 0;
                 $domain->emit('error', $er);
             } elsif (ref $er eq 'Rum::Error') {
-                throw $er; # Unhandled 'error' event
+                $er->throw; # Unhandled 'error' event
             } else {
                 #croak $er;
                 Carp::croak('Uncaught, unspecified "error" event.');
@@ -301,7 +305,7 @@ sub listeners {
 }
 
 sub listenerCount {
-    my ($this, $emitter, $type) = @_;
+    my ($emitter, $type) = @_;
     my $listeners = $emitter->{_events}
     ? $emitter->{_events}->{$type}
     : undef;
@@ -317,6 +321,7 @@ sub listenerCount {
 package Rum::Events::Once; {
     use warnings;
     use strict;
+    use Data::Dumper;
     use overload '&{}' => sub{
         my $self = shift;
         return sub{ $self->{do}->(@_) }

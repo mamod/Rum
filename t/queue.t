@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use lib '../../lib';
+use lib './lib';
 use Rum::Loop::Queue;
 use Test::More;
 use Data::Dumper;

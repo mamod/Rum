@@ -384,4 +384,12 @@ sub process_queue {
     return $loop->{process_handles}->{$pid};
 }
 
+
+sub process_kill {
+    my $loop = shift;
+    my $process = shift;
+    my $sig = shift;
+    return POSIX::kill $process->{pid}, $sig;
+}
+
 1;

@@ -4,6 +4,7 @@ use warnings;
 use B  ();
 use Scalar::Util 'looks_like_number';
 use List::Util ();
+use Data::Dumper;
 
 my $ERRNO_MAP = {
     2 => 'ENOENT'
@@ -24,8 +25,7 @@ sub isNumber {
 
 sub isString {
     my $self = shift;
-    my $str = shift;
-    if ( defined $str && !ref $str && !$self->isNumber($str) ) {
+    if ( defined $_[0] && !ref $_[0] && !$self->isNumber($_[0]) ) {
         return 1;
     }
     return 0;
@@ -53,6 +53,10 @@ sub isNaN    { shift; ! defined( $_[0] <=> 9**9**9 ) }
 sub signbit  { shift; substr( sprintf( '%g', $_[0] ), 0, 1 ) eq '-' }
 sub isFinite {
     my ($self,$num) = @_;
+    if ($self->isString($num) || !defined $num) {
+        return 0;
+    }
+    
     if ($self->isinf($num) || $self->isNaN($num) || $self->signbit($num)) {
         return 1;
     }
@@ -60,11 +64,6 @@ sub isFinite {
 }
 
 sub isBuffer {
-    my $self = shift;
-    return ref $_[0] eq 'Rum::Buffer';
-}
-
-sub isBufferoo {
     my $self = shift;
     return ref $_[0] eq 'Rum::Buffer';
 }
@@ -154,6 +153,8 @@ sub _errnoException {
     }
     
     my $e = Rum::Error->new($message);
+    my@caller = caller(1);
+    $e->{caller2} = \@caller;
     $e->{code} = $ERRNO_MAP->{$errname+0};
     $e->{errno} = $err + 0;
     $e->{syscall} = $syscall;
@@ -225,6 +226,34 @@ sub filter {
     }
     
     return $res;
+}
+
+sub debuglog {
+    shift;
+    my $type = shift;
+    
+    my $uType = uc $type;
+    if (!$ENV{RUM_DEBUG} || $ENV{RUM_DEBUG} !~ /$uType/i) {
+        return sub {};
+    }
+    
+    return sub {
+        print STDERR $uType . " $$: ";
+        for (@_){
+            if (ref $_){
+                print STDERR Dumper $_;
+            } elsif (defined $_) {
+                print STDERR $_ . " ";
+            } else {
+                print STDERR "undefined ";
+            }
+        }
+        print STDERR "\n";
+    };
+}
+
+sub BufferOrStringLength {
+    return ref $_[1] ? $_[1]->length : length $_[1];
 }
 
 1;

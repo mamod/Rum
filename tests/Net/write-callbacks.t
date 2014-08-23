@@ -8,7 +8,7 @@ my $assert = Require('assert');
 my $cbcount = 0;
 
 ##TODO : raise this value to 500000
-my $N = 5000;
+my $N = 30000;
 
 my $server; $server = $net->Server( sub {
     my $self = shift;

@@ -9,7 +9,7 @@ my $tree;
 use Data::Dumper;
 
 my $loop = Rum::Loop::default_loop();
-use Rum::Wrap::Handle qw(close ref unref);
+use Rum::Wrap::Handle qw(close ref unref getHandleData);
 
 sub timer_cmp {
     my ($a,$b) = @_;
@@ -31,7 +31,7 @@ sub new {
 
 sub OnTimeout {
     my ($handle, $status) = @_;
-    my $wrap = $handle->{data};
+    my $wrap = getHandleData($handle);
     Rum::Timers::MakeCallback($wrap,'ontimeout');
 }
 

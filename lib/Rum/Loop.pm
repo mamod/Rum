@@ -72,7 +72,7 @@ sub buf_init {
     my $str = shift;
     my $len = length $str;
     my $size = shift || $len;
-    return [$str];
+    return ref $str ? $str : [$str];
     return {
         base => $str,
         len => $len,
@@ -87,14 +87,11 @@ sub req_register {
     my ($loop,$req) = @_;
     $req->{id} = "$req";
     $loop->{active_reqs}++;
-    #$req->{active_queue} = QUEUE_INIT($req);
-    #$loop->{active_reqs}->insert_tail($req->{active_queue});
 }
 
 sub req_unregister {
     my ($loop,$req) = @_;
     $loop->{active_reqs}--;
-    ##$req->{active_queue}->remove();
 }
 
 sub req_init {

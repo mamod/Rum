@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use lib './lib';
 use Test::More;
 use Rum::Buffer;
 use utf8;

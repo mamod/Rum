@@ -12,7 +12,7 @@ use FindBin qw($Bin);
 my $loop = Rum::Loop->new();
 
 if( !$Rum::Loop::Pool::threads_enabled ) {
-    plan skip_all => 'Not supported on windows';
+    plan skip_all => 'Not supported, perl build does not support threads';
 }
 
 my $timer_counter = 0;
@@ -46,8 +46,6 @@ $loop->queue_work($req, {
         } else {
             push @nested_capture, $args->[1];
         }
-        
-        #print "nested.t notified " . Dumper $args;
     }
 });
 

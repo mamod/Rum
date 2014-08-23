@@ -7,7 +7,7 @@ $Carp::Internal{+__PACKAGE__}++;
 sub new {
     my ($class,$message) = @_;
     bless {
-        caller => caller,
+        caller => [caller],
         message => $message
     }, $class;
 }
@@ -40,7 +40,7 @@ sub throw {
         }
         
         my $message = [
-            'Died => ' . $caller->[1] . ':' . $caller->[2],
+            'Died => ' . $self->{caller}->[0] . ':' . $self->{caller}->[2],
             'Error: ' . $message,
             '',
             'Stack Trace',

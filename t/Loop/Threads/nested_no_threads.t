@@ -12,10 +12,6 @@ use FindBin qw($Bin);
 
 my $loop = Rum::Loop->new();
 
-#if( !$Rum::Loop::Pool::threads_enabled ) {
-#    plan skip_all => 'Not supported on windows';
-#}
-
 my $timer_counter = 0;
 my $t = {};
 $loop->timer_init($t);

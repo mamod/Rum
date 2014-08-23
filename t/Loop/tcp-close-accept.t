@@ -47,8 +47,7 @@ sub connect_cb {
         
         ## Close check and incoming[0], time to finish test */
         ###$loop->close($tcp_incoming->[0], \&close_cb);
-
-
+        
         if ($isWin){
             diag('FIXME: windows gives no errors');
         } else {

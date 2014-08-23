@@ -92,7 +92,7 @@ sub _accept {
             }
             
             if (!$ret) {
-                _close($peerfd);
+                __close($peerfd);
                 return;
             }
             return $peerfd;

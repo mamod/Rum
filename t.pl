@@ -25,12 +25,25 @@ my %args = (
 my $harness = TAP::Harness->new( \%args );
 
 my @tests = ();
-find(sub{
-    my $file = $File::Find::name;
-    if ($file =~ /\.t$/) {
-        push @tests,$file;
+
+if (!@ARGV) {
+    push @ARGV, 'Loop';
+}
+
+
+for my $file (@ARGV){
+    $file = './t/' . $file;
+    if (-d $file) {
+        find(sub{
+            my $file = $File::Find::name;
+            if ($file =~ /\.t$/) {
+                push @tests,$file;
+            }
+        }, $file);
+    } elsif (-f $file){
+        push @tests, $file;
     }
-},'./t/Loop');
+}
 
 $harness->runtests(@tests);
 

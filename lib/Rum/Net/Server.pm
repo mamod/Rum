@@ -8,26 +8,14 @@ use base 'Rum::Events';
 use Data::Dumper;
 use Rum::Wrap::TCP;
 use Rum::Net::Socket;
+use Scalar::Util 'weaken';
+
 my $TCP_WRAP = 'Rum::Wrap::TCP';
 my $util = 'Rum::Utils';
+*debug = $util->debuglog('net');
 
 sub errnoException { &Rum::Utils::_errnoException }
 sub setEncoding { &Rum::Stream::Readable::setEncoding }
-
-sub debug {
-    return;
-    print STDERR "NET $$: ";
-    for (@_){
-        if (ref $_){
-            print STDERR Dumper $_;
-        } elsif (defined $_) {
-            print STDERR $_ . " ";
-        } else {
-            print STDERR "undefined ";
-        }
-    }
-    print STDERR "\n";
-}
 
 sub new {
     my $class = shift;
@@ -154,7 +142,7 @@ sub _listen2 {
             return;
         }
         #$alreadyListening = 1;
-        $self->{_handle} = $rval;
+        weaken($self->{_handle} = $rval);
     } else {
         debug('_listen2: have a handle already');
     }
@@ -178,7 +166,9 @@ sub _listen2 {
     }
     
     #generate connection key, this should be unique to the connection
-    $self->{_connectionKey} = ($addressType || '') . ':' . ($address || 'undef') . ':' . ($port || '');
+    $self->{_connectionKey} = ($addressType || '') . ':' .
+                                ($address || 'undef') . ':' .
+                                ($port || '');
     
     Rum::Process->nextTick(sub {
         $self->emit('listening');
@@ -240,7 +230,7 @@ sub close {
     
     if (!$this->{_handle}) {
         #Throw error. Follows net_legacy behaviour.
-        die('Not running');
+        die('Not running ' . $!);
     }
     
     if ($cb) {
@@ -302,7 +292,7 @@ sub createServerHandle {
     
     if ($address || $port || $isTCP) {
         debug('bind to ' . $address);
-        if ($addressType == 6) {
+        if ($addressType && $addressType == 6) {
             $err = $handle->bind6($address, $port);
         } else {
             $err = $handle->bind($address, $port);
@@ -340,6 +330,20 @@ sub _setupSlave {
     my ($this, $socketList) = @_;
     $this->{_usingSlaves} = 1;
     push @{$this->{_slaves}}, $socketList;
+}
+
+sub address {
+    my $this = shift;
+    if ($this->{_handle} && $this->{_handle}->can('getsockname')) {
+        my $out = {};
+        my $err = $this->{_handle}->getsockname($out);
+        die $err if $err;
+        return $out;
+    } elsif ($this->{_pipeName}) {
+        return $this->{_pipeName};
+    } else {
+        return;
+    }
 }
 
 1;

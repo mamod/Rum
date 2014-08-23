@@ -12,6 +12,7 @@ our @EXPORT = qw (
     spawn
     process_close
     stdio_container
+    process_kill
 );
 
 if ($^O eq 'MSWin32') {
@@ -23,7 +24,6 @@ if ($^O eq 'MSWin32') {
 sub stdio_container {
     my $len = shift;
     my $t = [];
-    
     for (1 .. $len){
         push @{$t}, {
             flags => 0
@@ -87,7 +87,8 @@ sub _process_open_stream {
         $flags = $STREAM_READABLE;
     }
     
-    Rum::Loop::stream_open($container->{data}->{stream}, $pipefds->[0], $flags) or return;
+    Rum::Loop::stream_open($container->{data}->{stream}, $pipefds->[0],
+                            $flags) or return;
     
     return 1;
 }

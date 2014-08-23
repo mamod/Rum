@@ -7,26 +7,11 @@ use List::Util qw(min);
 use Rum::Utils;
 use Rum::Error;
 use Rum::Buffer;
-
-use base qw(Rum::Stream);
-my $util = 'Rum::Utils';
 use Data::Dumper;
+use base qw(Rum::Stream);
 
-my $step = 0;
-sub debug {
-    return;
-    print "STRAM $$: (" . $step++ . ") : ";
-    for (@_){
-        if (ref $_){
-            print Dumper $_;
-        } elsif (defined $_) {
-            print $_ . " ";
-        } else {
-            print "undefined ";
-        }
-    }
-    print "\n";
-}
+my $util = 'Rum::Utils';
+*debug = $util->debuglog('stream');
 
 sub new {
     my ($class,$options) = @_;
@@ -45,7 +30,7 @@ sub readableAddChunk {
     } elsif ( $util->isNullOrUndefined($chunk) ) {
         $state->{reading} = 0;
         onEofChunk($stream, $state) if (!$state->{ended});
-    } elsif ($state->{objectMode} || $chunk && _getObjLength($chunk) > 0) {
+    } elsif ($state->{objectMode} || $chunk && $util->BufferOrStringLength($chunk) > 0) {
         if ($state->{ended} && !$addToFront) {
             my $e = Rum::Error->new('stream->push() after EOF');
             $stream->emit('error', $e);
@@ -63,7 +48,9 @@ sub readableAddChunk {
                 $stream->read(0);
             } else {
                 #update the buffer info.
-                $state->{length} += $state->{objectMode} ? 1 : _getLength($chunk);
+                $state->{length} += $state->{objectMode} ? 1 :
+                                     $util->BufferOrStringLength($chunk);
+                
                 if ($addToFront) {
                     unshift @{ $state->{buffer} },$chunk;
                 } else {
@@ -214,7 +201,7 @@ sub howMuchToRead {
         
         #only flow one buffer at a time
         if ($state->{flowing} && scalar @{ $state->{buffer} } ) {
-            return _getObjLength($state->{buffer}->[0]);
+            return $util->BufferOrStringLength($state->{buffer}->[0]);
         } else {
             return $state->{length};
         }
@@ -488,13 +475,13 @@ sub fromList {
         $state->{buffer} = [];
     } else {
         #read just some of it.
-        if ($n < _getObjLength($list->[0]) ) {
+        if ($n < $util->BufferOrStringLength($list->[0]) ) {
             #just take a part of the first list item.
             #slice is the same for buffers and strings.
             my $buf = $list->[0];
             $ret = $buf->slice(0, $n);
             $list->[0] = $buf->slice($n);
-        } elsif ( $n == _getObjLength($list->[0]) ) {
+        } elsif ( $n == $util->BufferOrStringLength($list->[0]) ) {
             #first list is a perfect match
             $ret = shift @{$list};
         } else {
@@ -774,15 +761,6 @@ sub unpipe {
 
     $dest->emit('unpipe', $this);
     return $this;
-}
-
-##get length of either buffer or string
-sub _getLength {
-    return !ref $_[0] ? length $_[0] : $_[0]->length;
-}
-
-sub _getObjLength {
-    return length $_[0];
 }
 
 #backwards compatibility.

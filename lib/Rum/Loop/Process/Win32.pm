@@ -16,6 +16,8 @@ use Win32::Process;
 use Win32;
 use Cwd;
 
+my $STILL_ACTIVE = 259;
+
 #process constants
 my $NULL = Rum::Loop::Core::NULL();
 my $DETACHED_PROCESS = 0x00000008;
@@ -418,12 +420,15 @@ sub _chld {
             $process = $q->{data};
             $q = $q->{next};
             
-            my $status = "\0\0\0\0";
-            Rum::Loop::Core::GetExitCodeProcess($process->{process_handle},$status)
-                    or die $^E;
-            $status = unpack "V", $status;
+            my $status = Rum::Loop::Core::ExitCodeProcess(
+                            $process->{process_handle},
+                            $status);
             
-            if ($status == 259) { # 259 == STILL_ACTIVE
+            if (!defined $status) {
+                die $^E;
+            }
+            
+            if ($status == $STILL_ACTIVE) { # 259 == STILL_ACTIVE
                 next;
             }
             
@@ -447,7 +452,8 @@ sub _chld {
             }
             
             #close process handle
-            Rum::Loop::Core::CloseHandle($process->{process_handle}) or die $^E;
+            Rum::Loop::Core::CloseHandle($process->{process_handle})
+                                            or die $^E;
             
             if (!$process->{exit_cb}) {
                 next;
@@ -467,6 +473,58 @@ sub process_queue {
     my $process = shift;
     $loop->{process_handles}->{$pid} = QUEUE_INIT($process);
     return $loop->{process_handles}->{$pid};
+}
+
+sub process_kill {
+    my $loop = shift;
+    my $process = shift;
+    my $sig = shift;
+    
+    my $signame = $Rum::Loop::Signal::signame{$sig};
+    # Unconditionally terminate the process. On Windows, killed processes
+    # normally return 1.
+    if ($signame eq 'TERM' || $signame eq 'KILL' || $signame eq 'INT') {
+        
+        if (Rum::Loop::Core::TerminateProcess($process->{process_handle}, 1)) {
+            return 1;
+        }
+        
+        my $status = Rum::Loop::Core::ExitCodeProcess(
+                                    $process->{process_handle});
+        
+        # If the process already exited before TerminateProcess was called,
+        # TerminateProcess will fail with ERROR_ACESS_DENIED.
+        if ($^E+0 == 5 && defined $status &&
+                $status != $STILL_ACTIVE) { ##5 = access denied
+            $! = ESRCH;
+            return;
+        }
+        
+        $! = $^E+0;
+        return;
+        
+    } elsif ($sig == 0){
+        my $status = Rum::Loop::Core::ExitCodeProcess(
+                                    $process->{process_handle});
+        
+        if (!defined $status) {
+            $! = $^E+0;
+            return;
+        }
+        
+        if ($status != $STILL_ACTIVE) {
+            $! = ESRCH;
+            return;
+        }
+        
+        return 1;
+        
+    } else {
+        $! = ENOSYS;
+        return;
+    }
+    
+    return 1;
 }
 
 1;

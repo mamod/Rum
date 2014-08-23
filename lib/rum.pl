@@ -163,21 +163,13 @@ sub processChannel {
     #If we were spawned with env NODE_CHANNEL_FD then load that up and
     #start parsing data from that stream.
     if (process->{env}->{NODE_CHANNEL_FD}) {
-        
         my $fd = process->{env}->{NODE_CHANNEL_FD};
         assert($fd >= 0);
         #Make sure it's not accidentally inherited by child processes.
         delete process->{env}->{NODE_CHANNEL_FD};
         
         my $cp = Require('child_process');
-        
-        #Load tcp_wrap to avoid situation where we might immediately receive
-        #a message.
-        #FIXME is this really necessary?
-        #process.binding('tcp_wrap');
-        
         $cp->_forkChild($fd);
-        #assert(process.send);
     }
 }
 
@@ -272,8 +264,8 @@ package Rum::Process; {
     #Run callbacks that have no domain.
     sub _tickCallback {
         my ($callback, $hasQueue, $threw, $tock);
-        while ($tickInfo->{kIndex} < $tickInfo->{kLength}) {
-            $tock = $nextTickQueue->[$tickInfo->{kIndex}++];
+        while ($tock = shift @{$nextTickQueue}) {
+            $tickInfo->{kIndex}++;
             $callback = $tock->{callback};
             $threw = 1;
             $hasQueue = !!$tock->{_asyncQueue};
@@ -281,29 +273,26 @@ package Rum::Process; {
                 _loadAsyncQueue($tock);
             }
             
-            try {
+            eval {
                 $callback->();
                 $threw = 0;
-            } finally {
-                if ($threw) {
-                    tickDone();
-                    my $er = @_;
-                    die @_;
-                }
             };
+            if ($threw) {
+                tickDone();
+                die $@;
+            }
             
             if ($hasQueue) {
                 _unloadAsyncQueue($tock);
             }
-        }   
+        }
         tickDone();
     }
     
     sub tick_info { $tickInfo }
     
     sub nextTick {
-        
-        my ($s,$callback) = @_;
+        my ($s,$callback) = (shift,shift);
         
         #on the way out, don't bother. it won't get fired anyway.
         return if process->{_exiting};
@@ -318,8 +307,14 @@ package Rum::Process; {
         }
         
         push @{$nextTickQueue},$obj;
+        
+        ##don't allow pushing large numbers of nextTicks
+        ##We will consume to keep low memory footprints
+        if (@{$nextTickQueue} > 10) {
+            _tickCallback();
+        }
         $tickInfo->{kLength}++;
-    }    
+    }
 };
 
 return \&startup;

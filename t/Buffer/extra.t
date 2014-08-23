@@ -1,9 +1,9 @@
 use strict;
 use warnings;
 use Test::More;
+use lib './lib';
 use Rum::Buffer;
 my $Buffer = 'Rum::Buffer';
-use utf8;
 
 my $segments = ['TWFkbmVzcz8h', 'IFRoaXM=', 'IGlz', 'IG5vZGUuanMh'];
 my $b = $Buffer->new(64);
@@ -14,7 +14,6 @@ for (my $i = 0; $i < scalar @{$segments}; ++$i) {
 }
 
 is($b->toString('binary', 0, $pos), 'Madness?! This is node.js!');
-
 
 sub buildBuffer {
     my ($data) = @_;

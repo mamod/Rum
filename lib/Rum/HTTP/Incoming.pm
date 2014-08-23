@@ -1,6 +1,7 @@
 package Rum::HTTP::Incoming;
 use strict;
 use warnings;
+use Scalar::Util 'weaken';
 use Rum 'module';
 use base 'Rum::Stream::Readable';
 
@@ -38,8 +39,8 @@ sub new {
     # When the parser emits body chunks, they go in this list.
     # _read() pulls them out, and when it finds EOF, it ends.
     
-    $this->{socket} = $socket;
-    $this->{connection} = $socket;
+    weaken($this->{socket} = $socket);
+    weaken($this->{connection} = $socket);
     
     $this->{httpVersion} = undef;
     $this->{complete} = 0;
@@ -60,7 +61,7 @@ sub new {
     # response (client) only
     $this->{statusCode} = undef;
     $this->{statusMessage} = undef;
-    $this->{client} = $this->{socket};
+    weaken($this->{client} = $this->{socket});
     
     #flag for backwards compatibility grossness.
     $this->{_consuming} = 0;
@@ -68,9 +69,8 @@ sub new {
     #flag for when we decide that this message cannot possibly be
     #read by the user, so there's no point continuing to handle it.
     $this->{_dumped} = 0;
+    return $this;
 }
-
-#util.inherits(IncomingMessage, Stream.Readable);
 
 sub setTimeout {
     my ($this, $msecs, $callback) = @_;

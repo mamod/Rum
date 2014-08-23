@@ -1,8 +1,8 @@
 use strict;
 use warnings;
 use Test::More;
+use lib './lib';
 use Rum::Buffer;
-use Rum;
 my $Buffer = 'Rum::Buffer';
 
 #big example

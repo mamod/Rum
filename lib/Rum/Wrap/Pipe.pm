@@ -2,7 +2,18 @@ package Rum::Wrap::Pipe;
 use strict;
 use warnings;
 use Rum::Wrap::Handle;
-use Rum::Wrap::Stream;
+use Rum::Wrap::Stream qw(
+    readStart
+    readStop
+    shutdown
+    writeBuffer
+    writeAsciiString
+    writeUtf8String
+    writeUcs2String
+    stream
+    UpdateWriteQueueSize
+);
+
 use Data::Dumper;
 use Rum::Loop;
 use FileHandle;
@@ -23,6 +34,7 @@ sub new {
     Rum::Wrap::Stream::StreamWrap($this, $handle_);
     $loop->pipe_init($handle_, $ipc);
     $this->UpdateWriteQueueSize();
+    $this->{writev} = 0;
     return $this;
 }
 

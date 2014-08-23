@@ -1,6 +1,5 @@
 package Rum::Stream;
 use lib '../';
-
 use warnings;
 use strict;
 require Rum::Stream::Writable;
@@ -12,7 +11,10 @@ sub Writable { 'Rum::Stream::Writable' }
 sub Duplex   { 'Rum::Stream::Duplex'   }
 
 sub new {
-    bless {}, __PACKAGE__;
+    my $this = shift;
+    $this = ref $this ? $this : bless {}, __PACKAGE__;
+    Rum::Events::new($this);
+    return $this;
 }
 
 sub on { Rum::Events::on(@_) }

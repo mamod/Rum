@@ -9,6 +9,7 @@ use POSIX qw(:errno_h);
 use Rum::Loop::Flags qw(:Stream :IO :Errors :Platform $CLOSING $CLOSED $KQUEUE);
 use Rum::Loop::Utils 'assert';
 
+my $REUSE = $isWin ? 0 : 1;
 my $SOCK_NONBLOCK = $NONBLOCK;
 my $SOCK_CLOEXEC = $CLOEXEC;
 my $SO_NOSIGPIPE = eval "SO_NOSIGPIPE" || 0;
@@ -23,6 +24,9 @@ our @EXPORT = qw (
     tcp_connect
     tcp_listen
     tcp_open
+    tcp_getsockname
+    tcp_getpeername
+    tcp_keepalive
     listen
 );
 
@@ -60,8 +64,7 @@ sub tcp_bind {
         or return;
     
     if (!setsockopt($tcp->{io_watcher}->{fh}, SOL_SOCKET, SO_REUSEADDR,
-                    pack("l", 1))){
-        
+                    pack("l", $REUSE))){
         return;
     }
     
@@ -147,7 +150,6 @@ sub listen {
         $ret = $loop->tcp_listen($tcp,$backlog,$cb);
     } elsif ($tcp->{type} eq 'NAMED_PIPE'){
         $ret = $loop->pipe_listen($tcp, $backlog, $cb);
-        #die "not implemented";
     }
     
     if (!$ret) {
@@ -184,8 +186,6 @@ sub _close {
     close $_[0];
     $_[0] = 0;
 }
-
-my $WSAEWOULDBLOCK = 10035;
 
 sub tcp_connect {
     my ($loop, $handle, $req, $addr, $cb) = @_;
@@ -244,11 +244,91 @@ sub tcp_connect {
     return 1;
 }
 
-
 sub tcp_close {
     my $loop = shift;
     my $handle = shift;
     $loop->stream_close($handle);
+}
+
+sub tcp_getsockname {
+    my ($loop,$handle) = @_;
+    $!  = 0;
+    if ($handle->{delayed_error}) {
+        $! = $handle->{delayed_error};
+        return;
+    }
+    
+    if (Rum::Loop::Stream::stream_fd($handle) < 0) {
+        $! = EINVAL; #/* FIXME(bnoordhuis) -EBADF
+        return;
+    }
+    
+    my $name =  getsockname(Rum::Loop::Stream::stream_fh($handle));
+    return if !$name;
+    return $name;
+}
+
+sub tcp_getpeername {
+    my ($loop,$handle) = @_;
+    $!  = 0;
+    if ($handle->{delayed_error}) {
+        $! = $handle->{delayed_error};
+        return;
+    }
+    
+    if (Rum::Loop::Stream::stream_fd($handle) < 0) {
+        $! = EINVAL; #/* FIXME(bnoordhuis) -EBADF
+        return;
+    }
+    
+    my $name =  getpeername(Rum::Loop::Stream::stream_fh($handle));
+    return if !$name;
+    return $name;
+}
+
+
+sub tcp_keepalive {
+    my ($loop, $handle, $on, $delay) = @_;
+    if (Rum::Loop::Stream::stream_fd($handle) != -1) {
+        _tcp_keepalive(Rum::Loop::Stream::stream_fh($handle), $on, $delay)
+            or return;
+    }
+    
+    if ($on) {
+        $handle->{flags} |= $TCP_KEEPALIVE;
+    } else {
+        $handle->{flags} &= ~$TCP_KEEPALIVE;
+    }
+    
+    # TODO Store delay if uv__stream_fd(handle) == -1 but don't want to enlarge
+    # uv_tcp_t with an int that's almost never used...
+    
+    return 1;
+}
+
+sub _tcp_keepalive {
+    my ($fh, $on, $delay) = @_;
+    #setsockopt($socket, IPPROTO_TCP, TCP_NODELAY, 1);
+    if (!setsockopt($fh, SOL_SOCKET, SO_KEEPALIVE, $on)) {
+        return;
+    }
+    
+    ##FIXME
+    ##ifdef TCP_KEEPIDLE
+    #  if (on && setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &delay, sizeof(delay)))
+    #    return -errno;
+    ##endif
+    #
+    #  /* Solaris/SmartOS, if you don't support keep-alive,
+    #* then don't advertise it in your system headers...
+    #*/
+    #  /* FIXME(bnoordhuis) That's possibly because sizeof(delay) should be 1. */
+    ##if defined(TCP_KEEPALIVE) && !defined(__sun)
+    #  if (on && setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &delay, sizeof(delay)))
+    #    return -errno;
+    ##endif
+    
+    return 1;
 }
 
 1;

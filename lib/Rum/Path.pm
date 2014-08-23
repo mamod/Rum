@@ -36,7 +36,7 @@ sub dirname {
 sub extname {
     my ($self,$path) = @_;
     return (splitPath($path))[3];
-};
+}
 
 sub basename {
     my ($self, $path, $ext) = @_;

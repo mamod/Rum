@@ -1,8 +1,8 @@
 use strict;
 use warnings;
+use lib './lib';
 use Test::More;
 use Rum::Buffer;
-use utf8;
 my $Buffer = 'Rum::Buffer';
 
 #Binary encoding should write only one byte per character.

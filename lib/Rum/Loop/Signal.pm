@@ -23,9 +23,9 @@ our @EXPORT = qw (
 
 
 defined $Config{sig_name} || die "No sigs?";
-my %signo;
+our %signo;
+our %signame;
 my $i = 0;
-my %signame;
 foreach my $name ( split(' ', $Config{sig_name})) {
     $signo{$name} = $i; $signame{$i} = $name; $i++;
 }

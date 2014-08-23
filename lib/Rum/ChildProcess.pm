@@ -2,22 +2,21 @@ package Rum::ChildProcess;
 use strict;
 use warnings;
 use Rum 'process';
-my $util = 'Rum::Utils';
 use Rum::Utils;
-
 use Rum::Wrap::Process;
 use Rum::Wrap::Pipe;
-
 use Rum::Loop::Flags ':Platform';
+use Rum::Loop::Signal ();
 use Rum::StringDecoder;
 use Rum::Error;
-
 use Rum::Buffer;
 use Rum::Loop::Utils 'assert';
 use base 'Rum::Events';
-use Data::Dumper;
 use POSIX  qw[:errno_h];
 use Rum::Net::Socket;
+
+use Data::Dumper;
+my $util = 'Rum::Utils';
 
 sub errnoException {&Rum::Utils::_errnoException}
 
@@ -40,7 +39,6 @@ sub new {
     
     $this->{_handle}->{onexit} = sub {
         my ($exitCode, $signalCode) = @_;
-        
         #follow 0.4.x behaviour:
         #- normally terminated processes don't touch this.signalCode
         #- signaled processes don't touch this.exitCode
@@ -117,13 +115,11 @@ sub spawn {
     
     #If no `stdio` option was given - use default
     my $stdio = $options->{stdio} || 'pipe';
-    
     $stdio = _validateStdio($stdio, 0);
     
     $ipc = $stdio->{ipc};
     $ipcFd = $stdio->{ipcFd};
     $stdio = $options->{stdio} = $stdio->{stdio};
-    
     if (!$util->isUndefined($ipc)) {
         #Let child process know about opened IPC channel
         $options->{envPairs} ||= {};
@@ -131,9 +127,7 @@ sub spawn {
     }
     
     my $err = $this->{_handle}->spawn($options);
-    
     my $childpid = $this->{_handle}->{pid};
-    
     if ($err == ENOENT) {
         process->nextTick(sub {
             my $error = $err+0;
@@ -151,7 +145,6 @@ sub spawn {
         
         $this->{_handle}->close();
         undef $this->{_handle};
-        
         errnoException($err, 'spawn')->throw();
     }
     
@@ -244,9 +237,7 @@ sub createPipe {
 
 sub createSocket {
     my ($pipe, $readable) = @_;
-    
     my $s = Rum::Net::Socket->new({ handle => $pipe });
-
     if ($readable) {
         $s->{writable} = 0;
         $s->{readable} = 1;
@@ -263,7 +254,6 @@ sub _validateStdio {
     
     #Replace shortcut with an array
     if ($util->isString($stdio)) {
-        
         if ($stdio eq 'ignore') {
             $stdio = ['ignore', 'ignore', 'ignore'];
         } elsif ($stdio eq 'pipe') {
@@ -284,7 +274,6 @@ sub _validateStdio {
     #(i.e. PipeWraps or fds)
     $stdio = $util->reduce($stdio, sub {
         my ($acc, $stdio, $i) = @_;
-        
         my $cleanup = sub {
             my $new = $util->filter($acc, sub {
                 my $stdio = shift;
@@ -328,11 +317,8 @@ sub _validateStdio {
                 }
             }
             
-            #FIXME: pipe?!!
-            #This should be a named_pipe
             $ipc = createPipe(1);
             $ipcFd = $i;
-            
             push @{$acc}, {
                 type => 'pipe',
                 handle => $ipc,
@@ -353,9 +339,9 @@ sub _validateStdio {
         } elsif (getHandleWrapType($stdio) || getHandleWrapType($stdio->{handle}) ||
                 getHandleWrapType($stdio->{_handle})) {
             
-            my $handle = getHandleWrapType($stdio) ?
-            $stdio :
-            getHandleWrapType($stdio->{handle}) ? $stdio->{handle} : $stdio->{_handle};
+            my $handle = getHandleWrapType($stdio) ? $stdio : 
+            				getHandleWrapType($stdio->{handle}) ? 
+            					$stdio->{handle} : $stdio->{_handle};
             
             push @{$acc}, {
                 type => 'wrap',
@@ -370,7 +356,6 @@ sub _validateStdio {
                     $util->inspect($stdio));
             }
         } else {
-            #Cleanup
             $cleanup->();
             die('Incorrect value for stdio stream: ' .
                 $util->inspect($stdio));
@@ -389,9 +374,7 @@ sub _forkChild {
     my $p = createPipe(1);
     $p->open($fd);
     $p->unref();
-    
     setupChannel(process, $p);
-    
     my $refs = 0;
     process->on('newListener', sub {
         my ($this, $name) = @_;
@@ -421,28 +404,23 @@ sub _fork {
     #Prepare arguments for fork:
     $execArgv = $options->{execArgv} || process->{execArgv};
     $args = $util->concat($execArgv, [$modulePath], $args);
-  
+
     #Leave stdin open for the IPC channel. stdout and stderr should be the
     #same as the parent's if silent isn't set.
     $options->{stdio} = $options->{silent} ? ['pipe', 'pipe', 'pipe', 'ipc'] :
         [0, 1, 2, 'ipc'];
-  
+
     $options->{execPath} = $options->{execPath} || process->execPath;
-    
     return _spawn($options->{execPath}, $args, $options);
 }
 
 sub _spawn {
-    
     my $opts = normalizeSpawnArguments(@_);
-    
     my $file = $opts->{file};
     my $args = $opts->{args};
     my $options = $opts->{options};
     my $envPairs = $opts->{envPairs};
-    
     my $child = __PACKAGE__->new();
-    
     $child->spawn({
         file => $file,
         args => $args,
@@ -454,16 +432,13 @@ sub _spawn {
         uid => $options ? $options->{uid} : undef,
         gid => $options ? $options->{gid} : undef
     });
-    
     return $child;
 }
 
 sub normalizeSpawnArguments {
     #file, args, options
     my ($args, $options);
-    
     my $file = $_[0];
-    
     if (CORE::ref $_[1] eq 'ARRAY') {
         $args =  [ @{$_[1]} [ 0 .. (scalar @{$_[1]}) - 1 ] ];
         $options = $_[2];
@@ -471,15 +446,13 @@ sub normalizeSpawnArguments {
         $args = [];
         $options = $_[1];
     }
-    
+
     if (!$options) {
         $options = {};
     }
     
     my $env = ($options ? $options->{env} : undef) || process->{env};
-    
     _convertCustomFds($options);
-    
     return {
         file => $file,
         args => $args,
@@ -503,7 +476,6 @@ sub _convertCustomFds {
 
 sub getSocketList {
     my ($type, $slave, $key) = @_;
-    
     my $sockets = $slave->{_channel}->{sockets}->{$type};
     my $socketList = $sockets->{$key};
     if (!$socketList) {
@@ -514,7 +486,6 @@ sub getSocketList {
 }
 
 my $handleConversion = {
-    
     'net.Native' => {
         simultaneousAccepts => 1,
         send => sub {
@@ -555,15 +526,12 @@ my $handleConversion = {
             if ($socket->{server}) {
                 #the slave should keep track of the socket
                 $message->{key} = $socket->{server}->{_connectionKey};
-                
                 my $firstTime = !$this->{_channel}->{sockets}->{send}->{$message->{key}};
                 my $socketList = getSocketList('send', $this, $message->{key});
-                
                 #the server should no longer expose a .connection property
                 #and when asked to close it should query the socket status from
                 #the slaves
                 if ($firstTime) { $socket->{server}->_setupSlave($socketList) }
-                
                 #Act like socket is detached
                 $socket->{server}->{_connections}--;
             }
@@ -589,7 +557,6 @@ my $handleConversion = {
             my ($this, $message, $handle, $emit) = @_;
             my $socket = Rum::Net::Socket->new({handle => $handle});
             $socket->{readable} = $socket->{writable} = 1;
-            
             #if the socket was created by net.Server we will track the socket
             if ($message->{key}) {
                 #add socket to connections list
@@ -598,7 +565,6 @@ my $handleConversion = {
                     socket => $socket
                 });
             }
-            
             $emit->($socket);
         }
     }
@@ -632,17 +598,14 @@ sub setupChannel {
     
     $channel->{onread} = sub {
         my ($this, $nread, $pool, $recvHandle) = @_;
-        
         #TODO Check that nread > 0.
         return if $nread == 0;
         if ($pool) {
-            
             $jsonBuffer .= $decoder->write($pool->{base});
             my $i = index($jsonBuffer, "\n");
             while ( $i > 0 ) {
                 my $hash = substr($jsonBuffer, 0, $i+1, '');
                 my $message = eval "$hash";
-                
                 if (CORE::ref $message eq 'HASH' && $message->{cmd}
                                         && $message->{cmd} eq 'NODE_HANDLE'){
                     handleMessage($target, $message, $recvHandle);
@@ -652,9 +615,7 @@ sub setupChannel {
                 
                 $i = index($jsonBuffer, "\n");
             }
-            
             $this->{buffering} = length $jsonBuffer != 0;
-            
         } else {
             $this->{buffering} = 0;
             $target->disconnect();
@@ -689,22 +650,13 @@ sub setupChannel {
         }
         
         if ($message->{cmd} ne 'NODE_HANDLE') { return };
-        
+
         #Acknowledge handle receival. Don't emit error events (for example if
         #the other side has disconnected) because this call to send() is not
         #initiated by the user and it shouldn't be fatal to be unable to ACK
         #a message.
-        
         $target->_send({ cmd => 'NODE_HANDLE_ACK' }, 0, 1);
-        
         my $obj = $handleConversion->{$message->{type}};
-        
-        #Update simultaneous accepts on Windows
-        if ($isWin) {
-            #$handle->{_simultaneousAccepts} = 0;
-            #$net->_setSimultaneousAccepts($handle);
-        }
-        
         # Convert handle object
         $obj->{got}->($this, $message, $handle, sub {
             my $handle = shift;
@@ -761,17 +713,11 @@ sub setupChannel {
             my $obj = $handleConversion->{$message->{type}};
             ## convert TCP object to native handle object
             $handle = $obj->{send}->($target, $message, $handle, $swallowErrors);
-            
             ## If handle was sent twice, or it is impossible to get native handle
             ## out of it - just send a text without the handle.
             if (!$handle){
                 $message = $message->{msg};
             }
-            
-            ## Update simultaneous accepts on Windows
-            #if (obj.simultaneousAccepts) {
-            #    net._setSimultaneousAccepts(handle);
-            #}
             
         } elsif ($this->{_handleQueue} &&
                !(CORE::ref $message && $message->{cmd} eq 'NODE_HANDLE_ACK')) {
@@ -790,7 +736,6 @@ sub setupChannel {
         }
         
         my $err = $channel->writeUtf8String($req, $string, $handle);
-        
         if ($err) {
             if (!$swallowErrors){
                 $this->emit('error', errnoException($err, 'write'));
@@ -799,6 +744,7 @@ sub setupChannel {
             $this->{_handleQueue} = [];
         }
         
+        #FIXME
         #if ($obj && $obj->{postSend}) {
         #    $req->{oncomplete} = $obj->{postSend}->bind(undef, $handle);
         #}
@@ -818,7 +764,6 @@ sub setupChannel {
     ## null and connected is false
     
     $target->{connected} = 1;
-    
     $target->{disconnect} = sub {
         my $this = shift;
         if (!$this->{connected}) {
@@ -840,15 +785,12 @@ sub setupChannel {
     $target->{_disconnect} = sub {
         my $this = shift;
         assert($this->{_channel});
-        
         # This marks the fact that the channel is actually disconnected.
         $this->{_channel} = undef;
-        
         my $fired = 0;
         my $finish = sub {
             if ($fired) { return };
             $fired = 1;
-            
             $channel->close();
             $target->emit('disconnect');
         };
@@ -862,7 +804,6 @@ sub setupChannel {
         
         process->nextTick($finish);
     };
-    
     $channel->readStart();
 }
 
@@ -886,7 +827,6 @@ sub _send {
     $this->{_send}->($this, @_);
 }
 
-
 sub _exec {
     #my $this = shift;
     my $opts = _normalizeExecArgs(@_);
@@ -896,14 +836,9 @@ sub _exec {
                         $opts->{callback});
 }
 
-sub _getLength {
-    CORE::ref $_[0] ? $_[0]->length : length $_[0];
-}
-
 sub _execFile {
     #function(file /* args, options, callback */)
     my $file = $_[0];
-    
     my ($args, $callback);
     my $options = {
         encoding => 'utf8',
@@ -936,7 +871,8 @@ sub _execFile {
     my $encoding;
     my $_stdout;
     my $_stderr;
-    if ($options->{encoding} && $options->{encoding} ne 'buffer' && Rum::Buffer::isEncoding($options->{encoding})) {
+    if ($options->{encoding} && $options->{encoding} ne 'buffer' &&
+         Rum::Buffer::isEncoding($options->{encoding})) {
         $encoding = $options->{encoding};
         $_stdout = '';
         $_stderr = '';
@@ -951,21 +887,17 @@ sub _execFile {
     my $killed = 0;
     my $exited = 0;
     my $timeoutId;
-    
     my $ex = 0;
-    
     my $exithandler = sub {
         my ($this, $code, $signal) = @_;
         if ($exited) { return }
         $exited = 1;
-        
         if ($timeoutId) {
             clearTimeout($timeoutId);
             $timeoutId = undef;
         }
         
         if (!$callback) { return }
-        
         #merge chunks
         my $stdout;
         my $stderr;
@@ -1012,7 +944,6 @@ sub _execFile {
     my $kill = sub {
         $child->stdout->destroy();
         $child->stderr->destroy();
-        
         $killed = 1;
         try {
             $child->kill($options->{killSignal});
@@ -1031,8 +962,7 @@ sub _execFile {
     
     $child->stdout->addListener('data', sub {
         my ($this,$chunk) = @_;
-        $stdoutLen += _getLength($chunk);
-        
+        $stdoutLen += $util->BufferOrStringLength($chunk);
         if ($stdoutLen > $options->{maxBuffer}) {
             $ex = Rum::Error->new('stdout maxBuffer exceeded.');
             $kill->();
@@ -1047,8 +977,7 @@ sub _execFile {
     
     $child->stderr->addListener('data', sub {
         my ($this,$chunk) = @_;
-        $stderrLen += _getLength($chunk);
-        
+        $stderrLen += $util->BufferOrStringLength($chunk);
         if ($stderrLen > $options->{maxBuffer}) {
             $ex = Rum::Error->new('stderr maxBuffer exceeded.');
             $kill->();
@@ -1068,15 +997,12 @@ sub _execFile {
     
     $child->addListener('close', $exithandler);
     $child->addListener('error', $errorhandler);
-    
     return $child;
 }
-
 
 sub _normalizeExecArgs {
     my $command = $_[0];
     my ($file, $args, $options, $callback);
-    
     if (CORE::ref $_[1] eq 'CODE') {
         $options = undef;
         $callback = $_[1];
@@ -1110,6 +1036,47 @@ sub _normalizeExecArgs {
     };
 }
 
+my $sig_constant = \%Rum::Loop::Signal::signo;
+sub kill {
+    my $this = shift;
+    my $sig = shift;
+    my $signal;
+    
+    if ($util->isNumber($sig) && $sig == 0) {
+        $signal = 0;
+    } elsif (!defined $sig) {
+        $signal = $sig_constant->{'TERM'};
+    } else {
+        $signal = $sig_constant->{$sig};
+    }
+    
+    if (!defined $signal) {
+        Rum::Error->new('Unknown signal: ' . $sig)->throw();
+    }
+    
+    if ($this->{_handle}) {
+        my $err = $this->{_handle}->kill($signal);
+        if (!$err) {
+            #success
+            $this->{killed} = 1;
+            return 1;
+        }
+        
+        if ($err == ESRCH){
+            #already died
+        } elsif ($err == EINVAL || $err == ENOSYS){
+            #The underlying platform doesn't support this signal.
+            errnoException($err, 'kill')->throw();
+        } else {
+            #Other error, almost certainly EPERM.
+            $this->emit('error', errnoException($err, 'kill'));
+        }
+    }
+    
+    # Kill didn't succeed.
+    return 0;
+}
+
 #This object keep track of the socket there are sended
 package SocketListSend; {
     use strict;
@@ -1119,19 +1086,15 @@ package SocketListSend; {
     
     sub new {
         my ($class, $slave, $key) = @_;
-        
-        my $this = bless {
+        return bless {
             key => $key,
             slave => $slave
         }, $class;
-        
-        return $this;
     }
     
     sub _request {
         my ($this, $msg, $cmd, $callback) = @_;
         my $self = $this;
-        
         my ($onclose,$onreply);
         $onreply = sub {
             my $msg = shift;
@@ -1181,14 +1144,12 @@ package SocketListReceive; {
         my ($class, $slave, $key) = @_;
         my $this;
         my $self = $this = bless {}, $class;
-        
         $this->{connections} = 0;
         $this->{key} = $key;
         $this->{slave} = $slave;
-      
+
         my $onempty = sub {
             if (!$self->{slave}->{connected}) { return }
-            
             $self->{slave}->send({
                 cmd => 'NODE_SOCKET_ALL_CLOSED',
                 key => $self->{key}
@@ -1198,17 +1159,13 @@ package SocketListReceive; {
         $this->{slave}->on('internalMessage', sub {
             my ($this, $msg) = @_;
             if ($msg->{key} ne $self->{key}){ return }
-            
             if ($msg->{cmd} eq 'NODE_SOCKET_NOTIFY_CLOSE') {
                 # Already empty
                 if ($self->{connections} == 0) { return $onempty->() }
-                
                 # Wait for sockets to get closed
                 $self->once('empty', $onempty);
-                
             } elsif ($msg->{cmd} eq 'NODE_SOCKET_GET_COUNT') {
                 if (!$self->{slave}->{connected}) { return }
-                
                 $self->{slave}->send({
                     cmd => 'NODE_SOCKET_COUNT',
                     key => $self->{key},
@@ -1216,16 +1173,13 @@ package SocketListReceive; {
                 });
             }
         });
-        
         return $this;
     }
     
     sub add {
         my ($this, $obj) = @_;
         my $self = $this;
-        
         $this->{connections}++;
-        
         #Notify previous owner of socket about its state change
         $obj->{socket}->once('close', sub {
             $self->{connections}--;

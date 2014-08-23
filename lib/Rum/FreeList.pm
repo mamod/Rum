@@ -9,6 +9,7 @@ sub new {
     $this->{constructor} = $constructor;
     $this->{max} = $max;
     $this->{list} = [];
+    return $this;
 }
 
 sub alloc {

@@ -2,7 +2,7 @@ package Rum::Loop::Queue;
 use strict;
 use warnings;
 use Data::Dumper;
-
+use Scalar::Util 'weaken';
 use base qw/Exporter/;
 our @EXPORT = qw (
     QUEUE_INIT
@@ -15,40 +15,42 @@ our @EXPORT = qw (
     QUEUE_DATA
     QUEUE_EMPTY
     QUEUE_FOREACH
+    QUEUE_TAIL
 );
 
 sub QUEUE_INIT {
-    #my $data = shift;
+    my $data = shift;
     my $self = {};
     $self->{next} = $self;
     $self->{prev} = $self;
-    $self->{data} = $_[0];
+    $self->{data} = $data;
     return $self;
 }
 
 sub QUEUE_INIT2 {
-    $_[0]->{next} = $_[0];
-    $_[0]->{prev} = $_[0];
-    $_[0]->{data} = $_[1];
-    return 1;
-}
-
-sub QUEUE_ADD {
-    
+    my $q = shift;
+    my $data = shift;
+    $q->{next} = $q;
+    $q->{prev} = $q;
+    $q->{data} = $data;
+    weaken $q->{data};
+    weaken $q->{prev};
+    weaken $q->{next};
 }
 
 sub QUEUE_REMOVE {
     my $x = shift;
     $x->{next}->{prev} = $x->{prev};
     $x->{prev}->{next} = $x->{next};
-    #delete $x->{prev};
-    #delete $x->{next};
     undef $x->{data};
-    #undef $_[0];
 }
 
 sub QUEUE_HEAD {
     shift->{next};
+}
+
+sub QUEUE_TAIL {
+    shift->{prev};
 }
 
 sub QUEUE_INSERT_HEAD {

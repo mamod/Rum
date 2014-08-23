@@ -9,33 +9,22 @@ use Rum::Wrap::TTY;
 use Rum::Net::Server;
 use Carp;
 use Data::Dumper;
+use Rum qw[Require process];
+use Scalar::Util 'weaken';
 
 sub errnoException { &Rum::Utils::_errnoException }
 
 my $util = 'Rum::Utils';
 my $EOF = -4095;
 
-sub debug {
-    return;
-    print "NET $$: ";
-    for (@_){
-        if (CORE::ref $_){
-            print STDERR Dumper $_;
-        } elsif (defined $_) {
-            print STDERR $_ . " ";
-        } else {
-            print STDERR "undefined ";
-        }
-    }
-    print STDERR "\n";
-}
+*debug = $util->debuglog('net');
 
 sub new {
     my $class = shift;
     my $options = shift;
     
     my $this = CORE::ref $class ? $class : bless {}, $class;
-
+    
     $this->{_connecting} = 0;
     $this->{_hadError} = 0;
     $this->{_handle} = undef;
@@ -65,7 +54,6 @@ sub new {
     }
     
     Rum::Stream::Duplex::new($this, $options);
-    #stream.Duplex.call(this, options);
 
     if ($options->{handle}) {
         $this->{_handle} = $options->{handle};
@@ -78,7 +66,9 @@ sub new {
         #these will be set once there is a connection
         $this->{readable} = $this->{writable} = 0;
     }
-
+    
+    weaken $this->{_handle};
+    
     #shut down the socket when we're finished with it.
     $this->on('finish', \&onSocketFinish);
     $this->on('_socketEnd', \&onSocketEnd);
@@ -204,19 +194,20 @@ sub initSocketHandle {
     $self->{destroyed} = 0;
     $self->{bytesRead} = 0;
     $self->{_bytesDispatched} = 0;
-
+    
     #Handle creation may be deferred to bind() or connect() time.
     if ($self->{_handle}) {
         $self->{_handle}->{owner} = $self;
         $self->{_handle}->{onread} = \&onread;
         
         #If handle doesn't support writev - neither do we
-        if (!$self->{_handle}->{writev}){
+        if ( $self->{_handle}->{writev} ){
+            $self->{_writev} = 1;
+        } else {
             $self->{_writev} = 0;
         }
     }
 }
-
 
 #This function is called whenever the handle gets a
 #buffer, or when there's an error reading.
@@ -265,7 +256,7 @@ sub onread {
     
     #Error, possibly EOF.
     if ($nread != $EOF) {
-        return $self->_destroy($!);
+        return $self->_destroy(errnoException($!, 'read'));
     }
     
     debug('EOF');
@@ -310,6 +301,7 @@ sub destroySoon {
 
 sub onSocketEnd {
     my $this = shift;
+    
     #XXX Should not have to do as much crap in this function.
     #ended should already be true, since this is called *after*
     #the EOF errno and onread has eof'ed
@@ -325,7 +317,7 @@ sub onSocketEnd {
         });
         $this->read(0);
     }
-  
+    
     if (!$this->{allowHalfOpen}) {
         $this->{_write} = \&writeAfterFIN;
         $this->destroySoon();
@@ -339,8 +331,7 @@ sub writeAfterFIN {
 sub _doRead {
     my $this = shift;
     my $n = shift;
-    #assert(defined $n);
-    if (!$n || $n == 0){
+    if (defined $n && $n == 0){
         return Rum::Stream::Readable::read($this, $n);
     }
     
@@ -377,7 +368,16 @@ sub _read {
         my $err = $this->{_handle}->readStart();
         
         if ($err){
-            #die $!;
+            $this->_destroy(errnoException($err, 'read'));
+        }
+        
+    }
+    ##FIXME: I had to add this hack to continue reading
+    elsif ($this->{readable} &&
+             !$this->{_readableState}->{endEmitted}){
+        
+        my $err = $this->{_handle}->readStart();
+        if ($err){
             $this->_destroy(errnoException($err, 'read'));
         }
     }
@@ -394,6 +394,11 @@ sub write {
 sub _write {
     my ($this, $data, $encoding, $cb) = @_;
     $this->_writeGeneric(0, $data, $encoding, $cb);
+}
+
+sub _writev {
+    my ($this, $chunks, $cb) = @_;
+    $this->_writeGeneric(1, $chunks, '', $cb);
 }
 
 sub __write {
@@ -432,23 +437,22 @@ sub _writeGeneric {
     my $err;
 
     if ($writev) {
-        die "not implemented";
-        #chunks = new Array(data.length << 1);
-        #for (var i = 0; i < data.length; i++) {
-        #    var entry = data[i];
-        #    var chunk = entry.chunk;
-        #    var enc = entry.encoding;
-        #    chunks[i * 2] = chunk;
-        #    chunks[i * 2 + 1] = enc;
-        #}
-        #err = this._handle.writev(req, chunks);
-        #
-        ##Retain chunks
-        #if (err === 0) req._chunks = chunks;
+        my @chunks = ();
+        for (my $i = 0; $i < @{$data}; $i++) {
+            my $entry = $data->[$i];
+            my $chunk = $entry->{chunk};
+            my $enc = $entry->{encoding};
+            $chunks[$i] = {
+                chunk => $chunk,
+                enc => $enc
+            };
+        }
+        $err = $this->{_handle}->writev($req, \@chunks);
+        #die "not implemented";
     } else {
         my $enc;
         if ($util->isBuffer($data)) {
-            $req->{buffer} = $data; #Keep reference alive.
+            #$req->{buffer} = $data; #Keep reference alive.
             $enc = 'buffer';
         } else {
             $enc = $encoding;
@@ -465,19 +469,19 @@ sub _writeGeneric {
     #If it was entirely flushed, we can write some more right now.
     #However, if more is left in the queue, then wait until that clears.
     if ($req->{async} && $this->{_handle}->{writeQueueSize} != 0){
-        $req->{cb} = $cb;
+        $req->{_cb} = $cb;
     } else {
         $cb->();
     }
 }
 
 sub __afterWrite {
-    
     my ($status, $handle, $req, $err) = @_;
     my $self = $handle->{owner};
-    #if (self != process.stderr && self != process.stdout){
-        debug('afterWrite', $status);
-    #}
+    
+    if ($self != process->stderr && $self != process->stdout){
+        debug('afterWrite', $status+0);
+    }
     
     #callback may come after call to destroy.
     if ($self->{destroyed}) {
@@ -486,24 +490,22 @@ sub __afterWrite {
     }
     
     if ($status) {
-        die "ss" . $status;
         my $ex = errnoException($status, 'write', $err);
         debug('write failure', $ex);
-        $self->_destroy($ex, $req->{cb});
+        $self->_destroy($ex, $req->{_cb});
         return;
     }
     
     Rum::Timers::_unrefActive($self);
     
-    #if (self != process.stderr && self != process.stdout) {
+    if ($self != process->stderr && $self != process->stdout) {
         debug('afterWrite call cb');
-    #}
-
-    if ($req->{cb}) {
-        $req->{cb}->($self);
+    }
+    
+    if ($req->{_cb}) {
+        $req->{_cb}->($self);
     }
 }
-
 
 sub createWriteReq {
     my ($req, $handle, $data, $encoding) = @_;
@@ -514,8 +516,37 @@ sub createWriteReq {
     } elsif ($encoding eq 'ascii'){
         return $handle->writeAsciiString($req, $data);
     } else {
-        die $encoding;
+        return $handle->writeBuffer($req, Rum::Buffer->new($data, $encoding));
     }
+    
+    die "Wrong buffer";
+}
+
+sub bytesWritten {
+    my $this = shift;
+    my $bytes = $this->{_bytesDispatched};
+    my $state = $this->{_writableState};
+    my $data = $this->{_pendingData};
+    my $encoding = $this->{_pendingEncoding};
+    
+    foreach my $el (@{$state->{buffer}}) {
+        if ($util->isBuffer($el->{chunk})) {
+            $bytes += $el->{chunk}->length;
+        }
+        else {
+            $bytes += Rum::Buffer->byteLength($el->{chunk}, $el->{encoding});
+        }
+    }
+    
+    if ($data) {
+        if ($util->isBuffer($data)) {
+            $bytes += $data->length;
+        } else {
+            $bytes += Rum::Buffer->byteLength($data, $encoding);
+        }
+    }
+    
+    return $bytes;
 }
 
 sub readyState {
@@ -571,10 +602,7 @@ sub normalizeConnectArgs {
 sub _connect {
     my ($self, $address, $port, $addressType, $localAddress, $localPort) = @_;
     #TODO return promise from Socket.prototype.connect which
-    #wraps _connectReq.
-    
     assert($self->{_connecting} == 1);
-    
     my $err;
     
     if ($localAddress || $localPort) {
@@ -590,7 +618,6 @@ sub _connect {
         }
         
         my $bind;
-        
         if ($addressType == 4){
             if (!$localAddress){
                 $localAddress = '0.0.0.0';
@@ -608,7 +635,6 @@ sub _connect {
             $self->_destroy($err);
             return;
         }
-        
         
         debug('binding to localAddress: %s and localPort: %d',
               $localAddress,
@@ -644,7 +670,6 @@ sub _connect {
         $self->_destroy(errnoException($err, 'connect'));
     }
 }
-
 
 sub connect {
     my ($this, $options, $cb) = @_;
@@ -786,7 +811,6 @@ sub end {
     Rum::Stream::Duplex::end($this, $data, $encoding);
     $this->{writable} = 0;
     #DTRACE_NET_STREAM_END(this);
-
     #just in case we're waiting for an EOF.
     if ($this->{readable} && !$this->{_readableState}->{endEmitted}){
         $this->read(0);
@@ -795,10 +819,21 @@ sub end {
     }
 }
 
+
+sub fireErrorCallbacks {
+    my ($self, $exception, $cb) = @_;
+    if ($cb) {$cb->($exception)};
+    if ($exception && !$self->{_writableState}->{errorEmitted}) {
+        process->nextTick( sub {
+            $self->emit('error', $exception);
+        });
+        $self->{_writableState}->{errorEmitted} = 1;
+    }
+}
+
 sub _destroy {
     my ($this, $exception, $cb) = @_;
     debug('destroy');
-    
     my $self = $this;
     
     #FIXME : this is a work around on error recieved
@@ -806,25 +841,15 @@ sub _destroy {
     #instead of reporting an error we should just close the socket and
     #move on - applies to windows only
     if ($exception && CORE::ref $this->{_handle} eq 'Rum::Wrap::Pipe'){
-        $exception = 0 if $exception == 10054; #WSAECONNRESET
+        $exception = 0 if $exception->{errno} == 10054; #WSAECONNRESET
     }
-    
-    my $fireErrorCallbacks = sub {
-        if ($cb) {$cb->($exception)};
-        if ($exception && !$self->{_writableState}->{errorEmitted}) {
-            Rum::process()->nextTick( sub {
-                $self->emit('error', $exception);
-            });
-            $self->{_writableState}->{errorEmitted} = 1;
-        }
-    };
     
     if ($self->{destroyed}) {
         debug('already destroyed, fire error callbacks');
-        $fireErrorCallbacks->();
+        fireErrorCallbacks(@_);
         return;
     }
-  
+    
     $self->{_connecting} = 0;
     
     $this->{readable} = $this->{writable} = 0;
@@ -833,29 +858,29 @@ sub _destroy {
     
     debug('close');
     if ($this->{_handle}) {
-        #if ($this != Rum::process::stderr){
-        #    debug('close handle');
-        #}
+        if ($this != process->stderr){
+            debug('close handle');
+        }
         
         my $isException = $exception ? 1 : 0;
         $this->{_handle}->close( sub {
             debug('emit close');
             $self->emit('close', $isException);
         });
-        $this->{_handle}->{onread} = sub{die};
+        $this->{_handle}->{onread} = undef;
         $this->{_handle} = undef;
     }
-  
+    
     #we set destroyed to true before firing error callbacks in order
     #to make it re-entrance safe in case Socket.prototype.destroy()
     #is called within callbacks
     $this->{destroyed} = 1;
-    $fireErrorCallbacks->();
+    fireErrorCallbacks(@_);
     
     if ($this->{server}) {
         debug('has server');
         $this->{server}->{_connections}--;
-        if ($this->{server}->{_emitCloseIfDrained}) {
+        if ($this->{server}->can('_emitCloseIfDrained')) {
             $this->{server}->_emitCloseIfDrained();
         }
     }
@@ -865,6 +890,20 @@ sub ref {
     my $this = shift;
     if ($this->{_handle}) {
         $this->{_handle}->ref();
+    }
+}
+
+sub unref {
+    my $this = shift;
+    if ($this->{_handle}) {
+        $this->{_handle}->unref();
+    }
+}
+
+sub setKeepAlive {
+    my ($this, $setting, $msecs) = @_;
+    if ($this->{_handle} && $this->{_handle}->can('setKeepAlive')) {
+        $this->{_handle}->setKeepAlive($setting, ~~($msecs / 1000));
     }
 }
 

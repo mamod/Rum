@@ -64,6 +64,7 @@ sub NativeRequire {
 
 sub Require {
     my ($id,$parent) = @_;
+    
     return  NativeRequire($id) if $NativeModules->{$id};
     my $module = __PACKAGE__->new($id,$parent);
     return $module->load();

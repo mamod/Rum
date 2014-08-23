@@ -4,6 +4,7 @@ use warnings;
 use Rum::TryCatch;
 use Rum::LinkedLists;
 use Rum::Wrap::Timers;
+use Rum::Utils;
 use Rum::Loop::Utils 'assert';
 use Time::HiRes 'time';
 use constant TIMEOUT_MAX => 2147483647; # 2^31-1
@@ -30,20 +31,7 @@ sub MakeCallback {
     $obj->{$name}->($obj);
 }
 
-sub debug {
-    return;
-    print "TIMER $$: ";
-    for (@_){
-        if (ref $_){
-            print Dumper $_;
-        } elsif (defined $_) {
-            print $_ . " ";
-        } else {
-            print "undefined ";
-        }
-    }
-    print STDERR "\n";
-}
+*debug = 'Rum::Utils'->debuglog('timer');
 
 sub process {
     return Rum::process();

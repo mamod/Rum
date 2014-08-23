@@ -92,6 +92,12 @@ sub new {
     return $self;
 }
 
+sub byteLength {
+    my $self = shift;
+    my $str = shift;
+    return bytes::length $str;
+}
+
 #=========================================================================
 # Buffer Write
 #=========================================================================
@@ -299,13 +305,9 @@ sub set {
         $value = 0;
     }
     
-    #this is how node seems to do it??
-    #not as I expected to ascii conversion
-    #I'm not sure if I'm doing it right though
+    #convert to int == ASCII
     if ( $value > 255 ) {
-        my $str = sprintf "%02x", $value;
-        $value = substr $str,-2,2;
-        $value = hex $value;
+        $value = $value & 0xFF;
     }
     
     $value = chr($value);
@@ -447,8 +449,18 @@ sub offset    { shift->{offset} }
         my $offset = shift;
         my $len = shift;
         my $encoding = shift || 'utf8';
-        #local $ret->{str} = $self->{buf};
-        local $ret->{str} = unpack("x$offset a$len", $self->{buf});
+        
+        if ($encoding eq 'raw') {
+            return $self->{buf};
+        }
+        
+        local $ret->{str};
+        if ($offset == 0 && $len == $self->length) {
+            $ret->{str} = $self->{buf};
+        } else {
+            $ret->{str} = unpack("x$offset a$len", $self->{buf});
+        }
+        
         $readDispatch->{$encoding}->($ret->{str});
         return $ret->{str};
     }

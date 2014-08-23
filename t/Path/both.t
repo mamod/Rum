@@ -170,5 +170,4 @@ foreach my $test (@$joinTests){
     is ($actual,$expected, join ', ', @{ $test->[0] } );
 }
 
-
 done_testing();

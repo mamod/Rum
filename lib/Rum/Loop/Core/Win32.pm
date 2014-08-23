@@ -89,6 +89,13 @@ Win32::API->Import(
     'I'
 );
 
+Win32::API->Import(
+    'kernel32',
+    'TerminateProcess',
+    'NN',
+    'I'
+);
+
 ##error report
 sub _lastError {
     return Win32::FormatMessage(Win32::GetLastError());
@@ -167,7 +174,6 @@ sub process_status {
     return $status;
 }
 
-
 sub disable_stdio_inheritance {
     my $handle;
     
@@ -186,15 +192,17 @@ sub disable_stdio_inheritance {
     if ($handle && $handle != $INVALID_HANDLE_VALUE) {
         SetHandleInformation($handle, $HANDLE_FLAG_INHERIT, 0);
     }
-    
-    #for (0..5){
-    #    cloexec($_, 1);
-    #}
-    
-    #Make inherited CRT FDs non-inheritable.
-    #GetStartupInfoW(&si);
-    #if (uv__stdio_verify(si.lpReserved2, si.cbReserved2))
-    #    uv__stdio_noinherit(si.lpReserved2);
+}
+
+sub ExitCodeProcess {
+    my $handle = shift;
+    my $status = "\0\0\0\0";
+    if (!GetExitCodeProcess($handle,$status)){
+        $! = $^E+0;
+        return;
+    }
+    $status = unpack "V", $status;
+    return $status;
 }
 
 1;
